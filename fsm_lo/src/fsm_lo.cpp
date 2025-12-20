@@ -40,7 +40,22 @@ FSMLO::FSMLO(ros::NodeHandle nh, ros::NodeHandle nh_private) :
 */
 FSMLO::~FSMLO()
 {
-  printf("[%s] Destroying FSMLO\n", PKG_NAME.c_str());
+  if (r2rp_)
+  {
+    fftw_destroy_plan(r2rp_);
+    r2rp_ = nullptr;
+  }
+
+  if (c2rp_)
+  {
+    fftw_destroy_plan(c2rp_);
+    c2rp_ = nullptr;
+  }
+
+  /* Clean up FFTW global state */
+  fftw_cleanup();
+
+  ROS_INFO("[%s] Destroyed", PKG_NAME.c_str());
 }
 
 /*******************************************************************************
@@ -65,6 +80,12 @@ FSMLO::cacheFFTW3Plans(const unsigned int& sz)
   c2r_out = (double*) fftw_malloc(sz * sizeof(double));
 
   c2rp_ = fftw_plan_dft_c2r_1d(sz, c2r_in, c2r_out, FFTW_MEASURE);
+
+  /* Free the temporary arrays */
+  fftw_free(r2r_in);
+  fftw_free(r2r_out);
+  fftw_free(c2r_in);
+  fftw_free(c2r_out);
 }
 
 /*******************************************************************************
@@ -498,8 +519,8 @@ bool FSMLO::serviceStart(
 {
   ROS_INFO("[%s] lidar odometry is now available.",PKG_NAME.c_str());
   ROS_INFO("[%s] To shut down issue",              PKG_NAME.c_str());
-  ROS_INFO("%*s rosservice call %s/stop",  (int)(PKG_NAME.size()+2),"",
-    ros::this_node::getName());
+  ROS_INFO("%*s rosservice call %s/stop",  (int)(PKG_NAME.size()+2),
+    ros::this_node::getName().c_str());
   lock_ = false;
 
   return true;
@@ -514,8 +535,8 @@ bool FSMLO::serviceStop(
 {
   ROS_INFO("[%s] lidar odometry is shut down.",    PKG_NAME.c_str());
   ROS_INFO("[%s] To bring up issue",               PKG_NAME.c_str());
-  ROS_INFO("%*s rosservice call %s/start", (int)(PKG_NAME.size()+2),"",
-    ros::this_node::getName());
+  ROS_INFO("%*s rosservice call %s/start", (int)(PKG_NAME.size()+2),
+    ros::this_node::getName().c_str());
   lock_ = true;
 
   return true;
