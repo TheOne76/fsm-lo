@@ -33,7 +33,8 @@ FSMLO::FSMLO(ros::NodeHandle nh, ros::NodeHandle nh_private) :
 
   ROS_INFO("[%s] Inititialised.",                             PKG_NAME.c_str());
   ROS_INFO("[%s] To start production of lidar odometry issue",PKG_NAME.c_str());
-  ROS_INFO("%*s rosservice call %s/start", (int)(PKG_NAME.size()+2),"", ros::this_node::getName().c_str());
+  ROS_INFO("%*s rosservice call %s/start", (int)(PKG_NAME.size()+2),"",
+    ros::this_node::getName().c_str());
 }
 
 /*******************************************************************************
@@ -519,7 +520,7 @@ bool FSMLO::serviceStart(
 {
   ROS_INFO("[%s] lidar odometry is now available.",PKG_NAME.c_str());
   ROS_INFO("[%s] To shut down issue",              PKG_NAME.c_str());
-  ROS_INFO("%*s rosservice call %s/stop",  (int)(PKG_NAME.size()+2),
+  ROS_INFO("%*s rosservice call %s/stop",  (int)(PKG_NAME.size()+2),"",
     ros::this_node::getName().c_str());
   lock_ = false;
 
@@ -535,7 +536,7 @@ bool FSMLO::serviceStop(
 {
   ROS_INFO("[%s] lidar odometry is shut down.",    PKG_NAME.c_str());
   ROS_INFO("[%s] To bring up issue",               PKG_NAME.c_str());
-  ROS_INFO("%*s rosservice call %s/start", (int)(PKG_NAME.size()+2),
+  ROS_INFO("%*s rosservice call %s/start", (int)(PKG_NAME.size()+2),"",
     ros::this_node::getName().c_str());
   lock_ = true;
 
