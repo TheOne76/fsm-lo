@@ -1313,6 +1313,10 @@ class DatasetUtils
         regions[i].push_back(j);
     }
 
+    /* Nothing was invalid, so there is nothing to interpolate over */
+    if (regions.empty())
+      return ranges;
+
     /* Is the first index 0 and the last equal to the size-1? */
     int num_regions = regions.size();
     int numel_last_region = regions[num_regions-1].size();
