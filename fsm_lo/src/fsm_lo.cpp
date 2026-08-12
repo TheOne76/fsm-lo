@@ -247,9 +247,7 @@ FSMLO::initParams()
   assert(ip_.xy_bound >= 0.0);
   assert(ip_.t_bound >= 0.0);
   assert(ip_.max_counter > 0);
-  assert(ip_.min_magnification_size >= 0);
   assert(ip_.max_magnification_size >= ip_.min_magnification_size);
-  assert(ip_.max_recoveries >= 0);
 }
 
 /*******************************************************************************
