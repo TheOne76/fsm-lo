@@ -50,6 +50,19 @@ typedef Polygon_2::Vertex_iterator            VertexIterator;
 typedef CGAL::Min_ellipse_2_traits_2<Kernel>  Traits;
 typedef CGAL::Min_ellipse_2<Traits>           Min_ellipse;
 
+/*
+ * FFTW_MEASURE selects a plan by running timing trials, so the plan, and with
+ * it the rounding of the transform, can differ between two runs of the same
+ * binary on the same machine. FFTW_ESTIMATE selects by heuristic and is
+ * therefore repeatable. Define FSM_LO_FFTW_ESTIMATE at build time to obtain
+ * repeatable output at some cost in speed; the shipped configuration does not.
+ */
+#ifdef FSM_LO_FFTW_ESTIMATE
+  #define FSM_LO_FFTW_PLAN_FLAG FFTW_ESTIMATE
+#else
+  #define FSM_LO_FFTW_PLAN_FLAG FFTW_MEASURE
+#endif
+
 
 namespace FSM {
 /* ========================================================================== */
@@ -2054,7 +2067,7 @@ class DFTUtils
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
     /* Create plan */
-    fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FFTW_MEASURE);
+    fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
 
     /* Transfer the input vector to a structure preferred by fftw */
     for (unsigned int i = 0; i < num_rays; i++)
@@ -2106,7 +2119,7 @@ class DFTUtils
 
     /*
      * Create plan
-     * fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FFTW_MEASURE);
+     * fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
      */
 
     /* Transfer the input vector to a structure preferred by fftw */
@@ -2167,7 +2180,7 @@ class DFTUtils
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
     /* Create plan once */
-    fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FFTW_MEASURE);
+    fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
 
     for (unsigned int v = 0; v < scans.size(); v++)
     {
@@ -2231,7 +2244,7 @@ class DFTUtils
 
     /*
      * Create plan once
-     * fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FFTW_MEASURE);
+     * fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
      */
 
     for (unsigned int v = 0; v < scans.size(); v++)
@@ -2290,7 +2303,7 @@ class DFTUtils
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
     /* Create plan */
-    fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FFTW_MEASURE);
+    fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FSM_LO_FFTW_PLAN_FLAG);
 
     /* Transfer the input vector to a structure preferred by fftw */
     for (unsigned int i = 0; i < num_rays; i++)
@@ -2349,7 +2362,7 @@ class DFTUtils
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
     /* Create plan once */
-    fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FFTW_MEASURE);
+    fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FSM_LO_FFTW_PLAN_FLAG);
 
 
     for (unsigned int v = 0; v < scans.size(); v++)
@@ -2416,7 +2429,7 @@ class DFTUtils
 
     /*
      * Create plan once
-     * fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FFTW_MEASURE);
+     * fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FSM_LO_FFTW_PLAN_FLAG);
      */
 
     for (unsigned int v = 0; v < scans.size(); v++)
