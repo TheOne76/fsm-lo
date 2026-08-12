@@ -71,7 +71,7 @@ FSMLO::cacheFFTW3Plans(const unsigned int& sz)
   r2r_in = (double*) fftw_malloc(sz * sizeof(double));
   r2r_out = (double*) fftw_malloc(sz * sizeof(double));
 
-  r2rp_ = fftw_plan_r2r_1d(sz, r2r_in, r2r_out, FFTW_R2HC, FFTW_MEASURE);
+  r2rp_ = fftw_plan_r2r_1d(sz, r2r_in, r2r_out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
 
   /* Create backward plan */
   fftw_complex* c2r_in;
@@ -80,7 +80,7 @@ FSMLO::cacheFFTW3Plans(const unsigned int& sz)
   c2r_in = (fftw_complex*) fftw_malloc(sz * sizeof(fftw_complex));
   c2r_out = (double*) fftw_malloc(sz * sizeof(double));
 
-  c2rp_ = fftw_plan_dft_c2r_1d(sz, c2r_in, c2r_out, FFTW_MEASURE);
+  c2rp_ = fftw_plan_dft_c2r_1d(sz, c2r_in, c2r_out, FSM_LO_FFTW_PLAN_FLAG);
 
   /* Free the temporary arrays */
   fftw_free(r2r_in);
@@ -490,15 +490,8 @@ bool FSMLO::serviceInitialPose(
     double dy = pose_msg.pose.pose.position.y;
     double dt = extractYawFromPose(pose_msg.pose.pose);
 
-    M(0,0) = +cosf(dt);
-    M(0,1) = -sinf(dt);
-    M(0,2) = dx;
-    M(1,0) = +sinf(dt);
-    M(1,1) = +cosf(dt);
-    M(1,2) = dy;
-    M(2,0) = 0.0;
-    M(2,1) = 0.0;
-    M(2,2) = 1.0;
+    M = FSM::Utils::computeTransform(
+      std::make_tuple(dx, dy, dt), Eigen::Matrix3d::Identity());
 
     ROS_INFO("[%s] Setting initial pose to (%.2f,%.2f,%.2f)",
       PKG_NAME.c_str(), dx, dy, atan2(M(1,0), M(0,0)));
