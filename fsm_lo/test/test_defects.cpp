@@ -102,6 +102,29 @@ TEST(ComputeTransform, TranslationIsUnaffectedByOrientation)
   EXPECT_NEAR(m(1, 2), -0.5, kTightTolerance);
 }
 
+TEST(ScanHandling, GapFillingAcceptsAScanWithNoInvalidReturns)
+{
+  const std::vector<double> clean(360, 3.0);
+  const std::vector<double> filled = FSM::DatasetUtils::interpolateRanges(clean);
+
+  ASSERT_EQ(filled.size(), clean.size());
+  for (unsigned int i = 0; i < clean.size(); i++)
+    EXPECT_EQ(filled[i], clean[i]);
+}
+
+TEST(ScanHandling, GapFillingStillFillsAnInteriorRun)
+{
+  std::vector<double> ranges(360, 3.0);
+  for (unsigned int i = 100; i < 110; i++)
+    ranges[i] = 0.0;
+
+  const std::vector<double> filled = FSM::DatasetUtils::interpolateRanges(ranges);
+
+  ASSERT_EQ(filled.size(), ranges.size());
+  for (unsigned int i = 100; i < 110; i++)
+    EXPECT_EQ(filled[i], 3.0);
+}
+
 TEST(TranslationStage, FirstCoefficientNormIsDoublePrecision)
 {
   const unsigned int size = 360;
