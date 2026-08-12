@@ -1,16 +1,21 @@
 services:
   fsmlo:
+
     build:
       context: ..
       dockerfile: docker/Dockerfile
 
     image: li9i/fsm-lo:latest
     container_name: fsmlo
-
-    stdin_open: true
     tty: true
     network_mode: "host"
     ipc: host
-    user: fsmlo
+
+    environment:
+      - DISPLAY=${DISPLAY:-}
+      - QT_X11_NO_MITSHM=1
+      - NVIDIA_DRIVER_CAPABILITIES=all
     volumes:
-      - ../fsm_lo:/home/fsmlo/catkin_ws/src/fsm_lo/:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority

@@ -1,46 +1,57 @@
-/*
- * fsm - [IROS'22] Obtain robust odometry from your noisy panoramic 2D LIDAR
- *
- * Copyright (c) 2022 Alexandros PHILOTHEOU
- *
- * Licensed under the MIT License.
- * See LICENSE.MIT for details.
- */
+// Copyright 2022 Alexandros Filotheou
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 #ifndef FSM_H
 #define FSM_H
 
-#include <memory>
-#include <signal.h>
-#include <cmath>
-#include <numeric>
-#include <iostream>
-#include <fstream>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include <functional>
 #include <algorithm>
-#include <vector>
+#include <cassert>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <numeric>
+#include <random>
+#include <string>
 #include <tuple>
 #include <utility>
-#include <math.h>
-#include <chrono>
-#include <assert.h>
-#include <boost/random/normal_distribution.hpp>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/variate_generator.hpp>
+#include <vector>
+
 #include <fftw3.h>
+
+#include <CGAL/Cartesian.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Filtered_kernel.h>
-#include <CGAL/Cartesian.h>
-#include <CGAL/Polygon_2.h>
-#include <CGAL/convex_hull_2.h>
-#include <CGAL/minimum_enclosing_quadrilateral_2.h>
-#include <CGAL/squared_distance_2.h>
 #include <CGAL/Min_ellipse_2.h>
 #include <CGAL/Min_ellipse_2_traits_2.h>
-#include <eigen3/Eigen/Geometry>
+#include <CGAL/Polygon_2.h>
+#include <CGAL/convex_hull_2.h>
+#include <CGAL/squared_distance_2.h>
+
+#include <Eigen/Geometry>
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
 typedef Kernel::Point_2                       Point_2;

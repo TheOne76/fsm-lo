@@ -1,5 +1,13 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 project(fsm_lo)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ------------------------------------------------------------------------------
 # FSM_LO_EXACT_FP=ON replaces -Ofast with optimisation settings that forbid the
@@ -8,16 +16,15 @@ project(fsm_lo)
 # a build under test only produce comparable numbers when this is on.
 #
 # FSM_LO_DETERMINISTIC_FFT=ON makes FFTW select its plan by heuristic rather
-# than by timing itself. Plan choice affects rounding, and timing varies with
-# machine load, so without this the same binary can produce different numbers on
-# two consecutive runs.
+# than by timing itself. Plan choice affects rounding, so without this the same
+# binary can produce different numbers on two consecutive runs.
 #
-# Both default to OFF, which is the configuration this package ships with.
+# Both default to OFF, which is the configuration this package ships with. The
+# tests below force both ON regardless, since their tolerances are meaningless
+# otherwise.
 # ------------------------------------------------------------------------------
 option(FSM_LO_EXACT_FP "Forbid floating point reassociation and contraction" OFF)
 option(FSM_LO_DETERMINISTIC_FFT "Select FFTW plans by heuristic, not by timing" OFF)
-
-add_compile_options(-std=c++11)
 
 if(FSM_LO_EXACT_FP)
   add_compile_options(-O2 -fno-fast-math -ffp-contract=off)
@@ -25,72 +32,116 @@ else()
   add_compile_options(-Ofast)
 endif()
 
-if(FSM_LO_DETERMINISTIC_FFT)
-  add_definitions(-DFSM_LO_FFTW_ESTIMATE)
-endif()
-
+# ------------------------------------------------------------------------------
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(CGAL REQUIRED)
 
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  tf2
-  tf2_geometry_msgs
-  tf2_msgs
-  tf2_ros
-  message_generation
-)
-
-catkin_package(
-  CATKIN_DEPENDS
-  roscpp
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  message_runtime
-  tf2
-  tf2_msgs
-  tf2_ros
-  INCLUDE_DIRS include
-)
-
-INCLUDE_DIRECTORIES(include
-  ${catkin_INCLUDE_DIRS}
-  /usr/include/eigen3/)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 
 # ------------------------------------------------------------------------------
-# sm
-add_library(fsm_lo src/fsm_lo.cpp)
-target_link_libraries(fsm_lo
-  fftw3
-  CGAL::CGAL_Core
-  ${catkin_LIBRARIES})
-add_dependencies(fsm_lo
-  ${catkin_EXPORTED_TARGETS})
-# ------------------------------------------------------------------------------
-# The executable
-add_executable(fsm_lo_node
-  src/fsm_lo_node.cpp)
+# The core: the matcher and the odometry state it drives. No ROS anywhere in
+# here, so it can be tested without a ROS installation present.
+add_library(fsm_lo_core SHARED
+  src/fsm_lo/fsm_lo.cpp)
 
-target_link_libraries(fsm_lo_node
-  fsm_lo
-  ${catkin_LIBRARIES})
+target_include_directories(fsm_lo_core PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 
-add_dependencies(fsm_lo_node
-  ${catkin_EXPORTED_TARGETS}
-)
-# ------------------------------------------------------------------------------
-# Tests
-if(CATKIN_ENABLE_TESTING)
-  catkin_add_gtest(test_defects test/test_defects.cpp)
-  target_link_libraries(test_defects
-    fftw3
-    CGAL::CGAL_Core
-    ${catkin_LIBRARIES})
+target_link_libraries(fsm_lo_core PUBLIC
+  Eigen3::Eigen
+  CGAL::CGAL
+  PkgConfig::FFTW3)
 
-  find_package(rostest REQUIRED)
-  add_rostest(test/node_defects.test)
+if(FSM_LO_DETERMINISTIC_FFT)
+  target_compile_definitions(fsm_lo_core PUBLIC FSM_LO_FFTW_ESTIMATE)
 endif()
+
 # ------------------------------------------------------------------------------
+# The ROS interface, and the executable that runs it.
+add_library(fsm_lo_interface SHARED
+  src/fsm_lo/fsm_lo_interface.cpp)
+
+target_link_libraries(fsm_lo_interface PUBLIC
+  fsm_lo_core
+  rclcpp::rclcpp
+  tf2::tf2
+  tf2_ros::tf2_ros
+  tf2_geometry_msgs::tf2_geometry_msgs
+  ${sensor_msgs_TARGETS}
+  ${geometry_msgs_TARGETS}
+  ${nav_msgs_TARGETS}
+  ${std_srvs_TARGETS})
+
+add_executable(fsm_lo_interface_node
+  src/fsm_lo/fsm_lo_interface_node.cpp)
+
+target_link_libraries(fsm_lo_interface_node fsm_lo_interface)
+
+# ------------------------------------------------------------------------------
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+
+  # The two formatting linters impose a brace and wrapping style that this
+  # package has never used, and the core header is 3800 lines of inherited code
+  # whose arithmetic must not be disturbed. Reformatting it to satisfy a linter
+  # would be the single riskiest change in the package for no behavioural gain.
+  # Everything that checks something other than formatting stays on.
+  set(ament_cmake_uncrustify_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+
+  ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest REQUIRED)
+
+  # The tests assert agreement to 1e-9 and tighter. Under fast arithmetic the
+  # compiler is free to reassociate, which moves results well past that, so a
+  # passing test would say nothing. Force the exact configuration here whatever
+  # the library itself was configured with.
+  ament_add_gtest(test_fsm_lo_core
+    test/test_defects_core.cpp)
+
+  ament_add_gtest(test_fsm_lo_core_golden
+    test/test_core_golden.cpp)
+
+  foreach(test_target test_fsm_lo_core test_fsm_lo_core_golden)
+    if(TARGET ${test_target})
+      target_link_libraries(${test_target} fsm_lo_core)
+      target_compile_options(${test_target} PRIVATE
+        -O2 -fno-fast-math -ffp-contract=off)
+      target_compile_definitions(${test_target} PRIVATE
+        FSM_LO_FFTW_ESTIMATE
+        FSM_LO_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
+    endif()
+  endforeach()
+endif()
+
+# ------------------------------------------------------------------------------
+install(TARGETS
+  fsm_lo_core
+  fsm_lo_interface
+  fsm_lo_interface_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY include/
+  DESTINATION include)
+
+install(DIRECTORY launch config
+  DESTINATION share/${PROJECT_NAME})
+
+ament_export_include_directories(include)
+ament_export_libraries(fsm_lo_core fsm_lo_interface)
+
+ament_package()
