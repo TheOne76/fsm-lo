@@ -2673,7 +2673,7 @@ class Translation
     /* X1 */
     std::vector<double> X1 = DFTUtils::getFirstDFTCoefficient(diff, r2rp);
 
-    *norm_x1 = sqrtf(X1[0]*X1[0] + X1[1]*X1[1]);
+    *norm_x1 = sqrt(X1[0]*X1[0] + X1[1]*X1[1]);
 
     /* Find the x-wise and y-wise errors */
     double t = M_PI + current_t;
