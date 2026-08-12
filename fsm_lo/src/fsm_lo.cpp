@@ -558,7 +558,7 @@ FSMLO::scanCallback(const sensor_msgs::LaserScan::Ptr& scan_msg)
     sv_ = retypeScan(scan_msg);
     sv_ = FSM::DatasetUtils::interpolateRanges(sv_);
     sv_ = FSM::Utils::subsampleScan(sv_, SIZE_SCAN);
-    tv_ = ros::Time::now();
+    tv_ = scan_msg->header.stamp;
 
     return;
   }
@@ -574,7 +574,7 @@ FSMLO::scanCallback(const sensor_msgs::LaserScan::Ptr& scan_msg)
     sr_ = retypeScan(scan_msg);
     sr_ = FSM::DatasetUtils::interpolateRanges(sr_);
     sr_ = FSM::Utils::subsampleScan(sr_, SIZE_SCAN);
-    tr_ = ros::Time::now();
+    tr_ = scan_msg->header.stamp;
   }
 
 
