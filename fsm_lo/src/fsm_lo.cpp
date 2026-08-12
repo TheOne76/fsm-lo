@@ -136,7 +136,7 @@ FSMLO::initParams()
   {
     ROS_WARN("[%s] no pose_estimate_topic param found; resorting to defaults",
       PKG_NAME.c_str());
-    initial_pose_topic_ = ros::this_node::getName() + "/pose_estimate";
+    pose_estimate_topic_ = ros::this_node::getName() + "/pose_estimate";
   }
   /* ------------------------------------------------------------------------ */
   if (!nh_private_.getParam ("path_estimate_topic", path_estimate_topic_))
