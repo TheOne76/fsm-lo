@@ -166,21 +166,21 @@ FSMLO::initParams()
   {
     ROS_WARN("[%s] no global_frame_id param found; resorting to defaults",
       PKG_NAME.c_str());
-    global_frame_id_ = "/map";
+    global_frame_id_ = "map";
   }
   /* ------------------------------------------------------------------------ */
   if (!nh_private_.getParam ("base_frame_id", base_frame_id_))
   {
     ROS_WARN("[%s] no base_frame_id param found; resorting to defaults",
       PKG_NAME.c_str());
-    base_frame_id_ = "/base_laser_link";
+    base_frame_id_ = "base_laser_link";
   }
   /* ------------------------------------------------------------------------ */
   if (!nh_private_.getParam ("lo_frame_id", lo_frame_id_))
   {
     ROS_WARN("[%s] no lo_frame_id param found; resorting to defaults",
       PKG_NAME.c_str());
-    lo_frame_id_ = "/lo";
+    lo_frame_id_ = "lo";
   }
   /* ------------------------------------------------------------------------ */
   if (!nh_private_.getParam ("num_iterations", int_param))
