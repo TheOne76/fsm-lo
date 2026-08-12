@@ -509,10 +509,10 @@ class Utils
     /* Rotation matrix */
     Eigen::Matrix3d R;
     R = Eigen::Matrix3d::Identity();
-    R(0,0) = +cosf(dt);
+    R(0,0) = +cos(dt);
     R(0,1) = -sin(dt);
     R(1,0) = +sin(dt);
-    R(1,1) = +cosf(dt);
+    R(1,1) = +cos(dt);
 
     /* Compute the new transform matrix */
     Eigen::Matrix3d M_;
