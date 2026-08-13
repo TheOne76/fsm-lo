@@ -35,13 +35,11 @@ namespace fsm_lo
 
 /**
  * @brief A planar pose, or a planar displacement between two poses.
+ *
+ * The core carries the same type, so this is an alias rather than a second
+ * declaration: the two layers hand poses to each other unconverted.
  */
-struct Pose
-{
-  double x{0.0};
-  double y{0.0};
-  double t{0.0};
-};
+using Pose = FSM::Pose;
 
 /**
  * @brief Everything the matcher needs to know, and nothing about ROS.

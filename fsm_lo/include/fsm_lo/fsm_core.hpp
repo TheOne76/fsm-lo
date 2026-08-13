@@ -38,7 +38,6 @@
 #include <numeric>
 #include <random>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -79,6 +78,18 @@ typedef CGAL::Min_ellipse_2<Traits>           Min_ellipse;
 
 namespace FSM {
 /* ========================================================================== */
+/*
+ * A planar pose: position and orientation, the orientation in radians. The
+ * members are zero initialised so that a default constructed pose reads as the
+ * origin, which is what the triple of doubles this replaces already did.
+ */
+struct Pose
+{
+  double x{0.0};
+  double y{0.0};
+  double t{0.0};
+};
+/* ========================================================================== */
 struct input_params
 {
   unsigned int num_iterations;
@@ -103,7 +114,7 @@ struct output_params
   double translation_iterations;
   double intersections_times;
   unsigned int num_recoveries;
-  std::vector< std::tuple<double,double,double> > trajectory;
+  std::vector< Pose > trajectory;
 
   /* Rotation criterion */
   double rc;
@@ -132,7 +143,7 @@ class X
   /*****************************************************************************
   */
   static std::vector< std::pair<double,double> > find(
-    const std::tuple<double,double,double>& pose,
+    const Pose& pose,
     const std::vector< std::pair<double, double> >& lines,
     const unsigned int& num_rays)
   {
@@ -142,7 +153,7 @@ class X
   /*****************************************************************************
   */
   static std::vector< std::pair<double,double> > findExact(
-    const std::tuple<double,double,double>& pose,
+    const Pose& pose,
     const std::vector< std::pair<double, double> >& lines,
     const unsigned int& num_rays)
   {
@@ -151,9 +162,9 @@ class X
       std::chrono::high_resolution_clock::now();
 #endif
 
-    double px = std::get<0>(pose);
-    double py = std::get<1>(pose);
-    double pt = std::get<2>(pose);
+    double px = pose.x;
+    double py = pose.y;
+    double pt = pose.t;
 
     std::vector< std::pair<double,double> > intersections;
     double mul = 100000000.0;
@@ -297,7 +308,7 @@ class X
   /*****************************************************************************
    */
   static std::vector< std::pair<double,double> > findExact2(
-    const std::tuple<double,double,double>& pose,
+    const Pose& pose,
     const std::vector< std::pair<double, double> >& lines,
     const unsigned int& num_rays)
   {
@@ -306,9 +317,9 @@ class X
       std::chrono::high_resolution_clock::now();
 #endif
 
-    double px = std::get<0>(pose);
-    double py = std::get<1>(pose);
-    double pt = std::get<2>(pose);
+    double px = pose.x;
+    double py = pose.y;
+    double pt = pose.t;
 
     std::vector< std::pair<double,double> > intersections;
     double mul = 100000000.0;
@@ -576,12 +587,12 @@ class Utils
   /*****************************************************************************
   */
   static Eigen::Matrix3d
-  computeTransform(const std::tuple<double,double,double>& d,
+  computeTransform(const Pose& d,
     const Eigen::Matrix3d& M)
   {
-    double dx = std::get<0>(d);
-    double dy = std::get<1>(d);
-    double dt = std::get<2>(d);
+    double dx = d.x;
+    double dy = d.y;
+    double dt = d.t;
 
     /* Translation matrix */
     Eigen::Matrix3d T;
@@ -667,9 +678,9 @@ class Utils
   /*****************************************************************************
   */
   static void generatePose(
-    const std::tuple<double,double,double>& real_pose,
+    const Pose& real_pose,
     const double& dxy, const double& dt,
-    std::tuple<double,double,double>* virtual_pose)
+    Pose* virtual_pose)
   {
     assert(dxy >= 0);
     assert(dt >= 0);
@@ -688,20 +699,20 @@ class Utils
     double ry = distribution_y(generator_y);
     double rt = distribution_t(generator_t);
 
-    std::get<0>(*virtual_pose) = std::get<0>(real_pose) + rx;
-    std::get<1>(*virtual_pose) = std::get<1>(real_pose) + ry;
-    std::get<2>(*virtual_pose) = std::get<2>(real_pose) + rt;
+    virtual_pose->x = real_pose.x + rx;
+    virtual_pose->y = real_pose.y + ry;
+    virtual_pose->t = real_pose.t + rt;
 
-    wrapAngle(&std::get<2>(*virtual_pose));
+    wrapAngle(&virtual_pose->t);
   }
 
   /*****************************************************************************
   */
   static bool generatePose(
-    const std::tuple<double,double,double>& base_pose,
+    const Pose& base_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& dxy, const double& dt, const double& dist_threshold,
-    std::tuple<double,double,double>* real_pose,
+    Pose* real_pose,
     const unsigned int seed = 0)
   {
     assert(dxy >= 0.0);
@@ -716,14 +727,14 @@ class Utils
     std::uniform_real_distribution<double> distribution_t(-dt, dt);
 
     /* A temp real pose */
-    std::tuple<double,double,double> real_pose_ass;
+    Pose real_pose_ass;
 
     /* Fill in the orientation regardless */
     double rt = distribution_t(generator_t);
-    std::get<2>(real_pose_ass) = std::get<2>(base_pose) + rt;
-    double t = std::get<2>(real_pose_ass);
+    real_pose_ass.t = base_pose.t + rt;
+    double t = real_pose_ass.t;
     Utils::wrapAngle(&t);
-    std::get<2>(real_pose_ass) = t;
+    real_pose_ass.t = t;
 
     /*
      * We assume that the lidar sensor is distanced from the closest obstacle
@@ -736,15 +747,15 @@ class Utils
       double rx = distribution_x(generator_x);
       double ry = distribution_y(generator_y);
 
-      std::get<0>(real_pose_ass) = std::get<0>(base_pose) + rx;
-      std::get<1>(real_pose_ass) = std::get<1>(base_pose) + ry;
+      real_pose_ass.x = base_pose.x + rx;
+      real_pose_ass.y = base_pose.y + ry;
 
       if (isPositionInMap(real_pose_ass, map))
       {
         for (unsigned int i = 0; i < map.size(); i++)
         {
-          double dx = std::get<0>(real_pose_ass) - map[i].first;
-          double dy = std::get<1>(real_pose_ass) - map[i].second;
+          double dx = real_pose_ass.x - map[i].first;
+          double dy = real_pose_ass.y - map[i].second;
 
           if (dx*dx + dy*dy < dist_threshold*dist_threshold)
           {
@@ -775,10 +786,10 @@ class Utils
   static bool generatePoseWithinMap(
     const std::vector< std::pair<double,double> >& map,
     const double& dist_threshold,
-    std::tuple<double,double,double>* pose)
+    Pose* pose)
   {
     /* A temp real pose */
-    std::tuple<double,double,double> real_pose_ass;
+    Pose real_pose_ass;
 
     /* Generate orientation */
     std::random_device rand_dev_t;
@@ -787,7 +798,7 @@ class Utils
     std::uniform_real_distribution<double> distribution_t(-M_PI, M_PI);
 
     /* Fill in the orientation regardless */
-    std::get<2>(real_pose_ass) = distribution_t(generator_t);
+    real_pose_ass.t = distribution_t(generator_t);
 
     /* Find the bounding box of the map */
     double max_x = -1000.0;
@@ -829,15 +840,15 @@ class Utils
       double rx = distribution_x(generator_x);
       double ry = distribution_y(generator_y);
 
-      std::get<0>(real_pose_ass) = rx;
-      std::get<1>(real_pose_ass) = ry;
+      real_pose_ass.x = rx;
+      real_pose_ass.y = ry;
 
       if (isPositionInMap(real_pose_ass, map))
       {
         for (unsigned int i = 0; i < map.size(); i++)
         {
-          double dx = std::get<0>(real_pose_ass) - map[i].first;
-          double dy = std::get<1>(real_pose_ass) - map[i].second;
+          double dx = real_pose_ass.x - map[i].first;
+          double dy = real_pose_ass.y - map[i].second;
 
           if (dx*dx + dy*dy < dist_threshold*dist_threshold)
           {
@@ -920,10 +931,10 @@ class Utils
   /*****************************************************************************
   */
   static bool isPositionInMap(
-    const std::tuple<double, double, double>& pose,
+    const Pose& pose,
     const std::vector< std::pair<double,double> >& map)
   {
-    Point_2 point(std::get<0>(pose), std::get<1>(pose));
+    Point_2 point(pose.x, pose.y);
 
     /* Construct polygon from map */
     Polygon_2 poly;
@@ -946,14 +957,14 @@ class Utils
   /*****************************************************************************
   */
   static bool isPositionFartherThan(
-    const std::tuple<double, double, double>& pose,
+    const Pose& pose,
     const std::vector< std::pair<double,double> >& map,
     const double& dist)
   {
     for (unsigned int i = 0; i < map.size(); i++)
     {
-      double dx = std::get<0>(pose) - map[i].first;
-      double dy = std::get<1>(pose) - map[i].second;
+      double dx = pose.x - map[i].first;
+      double dy = pose.y - map[i].second;
       double d = sqrt(dx*dx + dy*dy);
 
       if (d < dist)
@@ -1043,7 +1054,7 @@ class Utils
   */
   static void points2scan(
     const std::vector< std::pair<double,double> >& points,
-    const std::tuple<double,double,double>& pose,
+    const Pose& pose,
     std::vector<double>* scan)
   {
 #ifdef TIMES
@@ -1053,8 +1064,8 @@ class Utils
 
     scan->clear();
 
-    double px = std::get<0>(pose);
-    double py = std::get<1>(pose);
+    double px = pose.x;
+    double py = pose.y;
 
     double dx = 0.0;
     double dy = 0.0;
@@ -1079,7 +1090,7 @@ class Utils
   */
   static void scan2points(
     const std::vector<double>& scan,
-    const std::tuple<double,double,double> pose,
+    const Pose pose,
     std::vector< std::pair<double,double> >* points,
     const double& angle_span = 2*M_PI)
   {
@@ -1090,9 +1101,9 @@ class Utils
 
     points->clear();
 
-    double px = std::get<0>(pose);
-    double py = std::get<1>(pose);
-    double pt = std::get<2>(pose);
+    double px = pose.x;
+    double py = pose.y;
+    double pt = pose.t;
 
     /* The angle of the first ray (in the local coordinate system) */
     double sa = -angle_span/2;
@@ -1120,7 +1131,7 @@ class Utils
   /*****************************************************************************
   */
   static void scanFromPose(
-    const std::tuple<double,double,double>& pose,
+    const Pose& pose,
     const std::vector< std::pair<double,double> >& points,
     const unsigned int& num_rays,
     std::vector<double>* scan)
@@ -1145,10 +1156,10 @@ class Utils
   static std::vector<double>
   subsampleScan(const std::vector<double>& scan_in, const size_t& sz)
   {
-    std::tuple<double,double,double> zero_pose;
-    std::get<0>(zero_pose) = 0.0;
-    std::get<1>(zero_pose) = 0.0;
-    std::get<2>(zero_pose) = 0.0;
+    Pose zero_pose;
+    zero_pose.x = 0.0;
+    zero_pose.y = 0.0;
+    zero_pose.t = 0.0;
 
     /* Turn scan to points */
     std::vector< std::pair<double,double> > scan_points;
@@ -1212,7 +1223,7 @@ class DatasetUtils
     dataset2points(const char* dataset_filepath)
     {
       std::vector< std::vector<double> > ranges;
-      std::vector< std::tuple<double,double,double> > poses;
+      std::vector< Pose > poses;
 
       readDataset(dataset_filepath, &ranges, &poses);
 
@@ -1223,9 +1234,9 @@ class DatasetUtils
       std::vector< std::vector< std::pair<double,double> > > polygons;
       for (std::size_t s = 0; s < ranges.size(); s++)
       {
-        double px = std::get<0>(poses[s]);
-        double py = std::get<1>(poses[s]);
-        double pt = std::get<2>(poses[s]);
+        double px = poses[s].x;
+        double py = poses[s].y;
+        double pt = poses[s].t;
 
         std::vector< std::pair<double,double> > polygon;
 
@@ -1250,7 +1261,7 @@ class DatasetUtils
   static void dataset2rangesAndPose(
     const char* dataset_filepath,
     std::vector<double>* ranges,
-    std::tuple<double,double,double>* pose)
+    Pose* pose)
   {
     readDataset(dataset_filepath, ranges, pose);
   }
@@ -1260,7 +1271,7 @@ class DatasetUtils
   static void readDataset(
     const char* filepath,
     std::vector<double>* ranges,
-    std::tuple<double,double,double>* pose)
+    Pose* pose)
   {
     /*
      * First read the first two number: they show
@@ -1321,7 +1332,7 @@ class DatasetUtils
         double py = std::stod(pose_d,&sz);
         double pt = std::stod(pose_d.substr(sz));
         Utils::wrapAngle(&pt);
-        *pose = std::make_tuple(px,py,pt);
+        *pose = Pose{px,py,pt};
 
         continue;
       }
@@ -1461,7 +1472,7 @@ class DatasetUtils
   static void readDataset(
     const char* filepath,
     std::vector< std::vector<double> >* ranges,
-    std::vector< std::tuple<double,double,double> >* poses)
+    std::vector< Pose >* poses)
   {
     /*
      * First read the first two number: they show
@@ -1531,7 +1542,7 @@ class DatasetUtils
         double py = std::stod(pose,&sz);
         double pt = std::stod(pose.substr(sz));
         Utils::wrapAngle(&pt);
-        poses->push_back(std::make_tuple(px,py,pt));
+        poses->push_back(Pose{px,py,pt});
 
         continue;
       }
@@ -1553,7 +1564,7 @@ class DatasetUtils
   static void printDataset(const char* dataset_filepath)
   {
     std::vector< std::vector<double> > ranges;
-    std::vector< std::tuple<double,double,double> > poses;
+    std::vector< Pose > poses;
 
     readDataset(dataset_filepath, &ranges, &poses);
 
@@ -1566,7 +1577,7 @@ class DatasetUtils
       }
 
       printf("FROM POSE (%f,%f,%f)\n",
-        std::get<0>(poses[s]), std::get<1>(poses[s]), std::get<2>(poses[s]));
+        poses[s].x, poses[s].y, poses[s].t);
     }
   }
 };
@@ -1581,9 +1592,9 @@ class Dump
   */
   static void scan(
     const std::vector<double>& real_scan,
-    const std::tuple<double,double,double>& real_pose,
+    const Pose& real_pose,
     const std::vector<double>& virtual_scan,
-    const std::tuple<double,double,double>& virtual_pose,
+    const Pose& virtual_pose,
     const std::string& dump_filepath)
   {
     std::vector< std::pair<double,double> > real_scan_points;
@@ -1613,10 +1624,10 @@ class Dump
         file << "vy = [vy " << virtual_scan_points[i].second << "];" << std::endl;
       }
 
-      file << "r00 = [" << std::get<0>(real_pose) <<
-        ", " << std::get<1>(real_pose) << "];" << std::endl;
-      file << "v00 = [" << std::get<0>(virtual_pose) <<
-        ", " << std::get<1>(virtual_pose) << "];" << std::endl;
+      file << "r00 = [" << real_pose.x <<
+        ", " << real_pose.y << "];" << std::endl;
+      file << "v00 = [" << virtual_pose.x <<
+        ", " << virtual_pose.y << "];" << std::endl;
 
       file.close();
     }
@@ -1848,7 +1859,7 @@ class ScanCompletion
   /*****************************************************************************
   */
   static void completeScan2(std::vector<double>* scan,
-    const std::tuple<double,double,double>& pose)
+    const Pose& pose)
   {
     std::vector<double> scan_copy = *scan;
 
@@ -1917,17 +1928,17 @@ class ScanCompletion
   /*****************************************************************************
   */
   static void completeScan5(
-    const std::tuple<double,double,double>& pose,
+    const Pose& pose,
     const std::vector<double>& scan_in,
     const unsigned int& num_rays,
     std::vector<double>* scan_out,
     std::vector< std::pair<double,double> >* map,
-    std::tuple<double,double,double>* map_origin)
+    Pose* map_origin)
   {
     std::vector< std::pair<double,double> > scan_points;
     Utils::scan2points(scan_in, pose, &scan_points, M_PI);
 
-    std::tuple<double,double,double> pose_within_points = pose;
+    Pose pose_within_points = pose;
 
     double farther_than = 0.01;
     bool is_farther_than = false;
@@ -2624,7 +2635,7 @@ class Translation
   */
   static double tff(
     const std::vector< double >& real_scan,
-    const std::tuple<double,double,double>& virtual_pose,
+    const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const int& max_iterations,
     [[maybe_unused]] const double& dist_bound,
@@ -2632,16 +2643,16 @@ class Translation
     const fftw_plan& r2rp,
     int* result_iterations,
     std::chrono::duration<double>* intersections_time,
-    std::tuple<double,double,double>* result_pose)
+    Pose* result_pose)
   {
 #ifdef PRINTS
     printf("input pose  (%f,%f,%f) [Translation::tff]\n",
-      std::get<0>(virtual_pose),
-      std::get<1>(virtual_pose),
-      std::get<2>(virtual_pose));
+      virtual_pose.x,
+      virtual_pose.y,
+      virtual_pose.t);
 #endif
 
-    std::tuple<double,double,double> current_pose = virtual_pose;
+    Pose current_pose = virtual_pose;
 
     std::vector<double> errors_xy;
 
@@ -2696,7 +2707,7 @@ class Translation
 
       /* Obtain the correction vector */
       std::pair<double,double> errors_xy =
-        tffCore(real_scan, virtual_scan_it, std::get<2>(current_pose),
+        tffCore(real_scan, virtual_scan_it, current_pose.t,
           inclusion_bound, r2rp, &d_v, &norm_x1);
 
       /* These are the corrections */
@@ -2709,11 +2720,11 @@ class Translation
       err = sqrt(err_sq);
 
       /* Correct the position */
-      std::get<0>(current_pose) += x_e;
-      std::get<1>(current_pose) += y_e;
+      current_pose.x += x_e;
+      current_pose.y += y_e;
 
-      [[maybe_unused]] double dx = std::get<0>(current_pose) - std::get<0>(virtual_pose);
-      [[maybe_unused]] double dy = std::get<1>(current_pose) - std::get<1>(virtual_pose);
+      [[maybe_unused]] double dx = current_pose.x - virtual_pose.x;
+      [[maybe_unused]] double dy = current_pose.y - virtual_pose.y;
 
       /* Check constraints */
       if(!Utils::isPositionInMap(current_pose, map))
@@ -2770,8 +2781,8 @@ class Translation
       double x_tot = std::accumulate(x_es.begin(), x_es.begin()+min_sum_d_idx, 0.0);
       double y_tot = std::accumulate(y_es.begin(), y_es.begin()+min_sum_d_idx, 0.0);
 
-      std::get<0>(*result_pose) = x_tot + std::get<0>(virtual_pose);
-      std::get<1>(*result_pose) = y_tot + std::get<1>(virtual_pose);
+      result_pose->x = x_tot + virtual_pose.x;
+      result_pose->y = y_tot + virtual_pose.y;
     }
     else
       *result_pose = current_pose;
@@ -2787,9 +2798,9 @@ class Translation
 
 #ifdef PRINTS
     printf("output pose (%f,%f,%f) [Translation::tff]\n",
-      std::get<0>(*result_pose),
-      std::get<1>(*result_pose),
-      std::get<2>(*result_pose));
+      result_pose->x,
+      result_pose->y,
+      result_pose->t);
 #endif
 
     return sum_d_v / real_scan.size();
@@ -2885,7 +2896,7 @@ public:
   */
   static std::vector<double> fmt(
     const std::vector< double >& real_scan,
-    const std::tuple<double,double,double>& virtual_pose,
+    const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
     const std::string& batch_or_sequential,
@@ -2911,7 +2922,7 @@ public:
    */
   static std::vector<double> fmt2Sequential(
     const std::vector< double >& real_scan,
-    const std::tuple<double,double,double>& virtual_pose,
+    const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
     std::vector<double>* rc0, std::vector<double>* rc1,
@@ -2919,18 +2930,18 @@ public:
   {
 #if defined (PRINTS)
     printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
-      std::get<0>(virtual_pose),
-      std::get<1>(virtual_pose),
-      std::get<2>(virtual_pose));
+      virtual_pose.x,
+      virtual_pose.y,
+      virtual_pose.t);
 #endif
 
     rc0->clear();
     rc1->clear();
 
-    std::tuple<double,double,double> zero_pose;
-    std::get<0>(zero_pose) = 0.0;
-    std::get<1>(zero_pose) = 0.0;
-    std::get<2>(zero_pose) = 0.0;
+    Pose zero_pose;
+    zero_pose.x = 0.0;
+    zero_pose.y = 0.0;
+    zero_pose.t = 0.0;
 
 
     unsigned int num_virtual_scans = pow(2,magnification_size);
@@ -2999,7 +3010,7 @@ public:
 
 #if defined (DEBUG)
       printf("a = %u\n", a);
-      printf("angle to out = %f\n", std::get<2>(virtual_pose) + ornt_a);
+      printf("angle to out = %f\n", virtual_pose.t + ornt_a);
       printf("snr = %.10f\n", snr);
       printf("fahm = %f\n", fahm);
       printf("pd = %.20f\n", pd);
@@ -3029,9 +3040,9 @@ public:
     for (unsigned int i = 0; i < angles.size(); i++)
     {
       printf("cand. poses (%f,%f,%f) [Rotation::fmt2]\n",
-        std::get<0>(virtual_pose),
-        std::get<1>(virtual_pose),
-        std::get<2>(virtual_pose)+angles[i]);
+        virtual_pose.x,
+        virtual_pose.y,
+        virtual_pose.t+angles[i]);
     }
 #endif
 
@@ -3176,7 +3187,7 @@ public:
    */
   static std::vector<double> fmt2Batch(
     const std::vector< double >& real_scan,
-    const std::tuple<double,double,double>& virtual_pose,
+    const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
     const fftw_plan& r2rp, const fftw_plan& c2rp,
@@ -3185,18 +3196,18 @@ public:
   {
 #if defined(PRINTS)
     printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
-      std::get<0>(virtual_pose),
-      std::get<1>(virtual_pose),
-      std::get<2>(virtual_pose));
+      virtual_pose.x,
+      virtual_pose.y,
+      virtual_pose.t);
 #endif
 
     rc0->clear();
     rc1->clear();
 
-    std::tuple<double,double,double> zero_pose;
-    std::get<0>(zero_pose) = 0.0;
-    std::get<1>(zero_pose) = 0.0;
-    std::get<2>(zero_pose) = 0.0;
+    Pose zero_pose;
+    zero_pose.x = 0.0;
+    zero_pose.y = 0.0;
+    zero_pose.t = 0.0;
 
 
     unsigned int num_virtual_scans = pow(2,magnification_size);
@@ -3286,9 +3297,9 @@ public:
     for (unsigned int i = 0; i < cand_angles.size(); i++)
     {
       printf("cand. poses (%f,%f,%f) [Rotation::fmt2]\n",
-        std::get<0>(virtual_pose),
-        std::get<1>(virtual_pose),
-        std::get<2>(virtual_pose)+cand_angles[i]);
+        virtual_pose.x,
+        virtual_pose.y,
+        virtual_pose.t+cand_angles[i]);
     }
 #endif
 
@@ -3656,11 +3667,11 @@ class Match
   */
   static void fmtdbh(
     const std::vector< double >& real_scan,
-    const std::tuple<double,double,double>& virtual_pose,
+    const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const fftw_plan& r2rp, const fftw_plan& c2rp,
     const input_params& ip, output_params* op,
-    std::tuple<double,double,double>* result_pose)
+    Pose* result_pose)
   {
     std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
@@ -3765,8 +3776,8 @@ class Match
           unsigned int ni = 2;
           int tr_i = 0;
 
-          std::tuple<double,double,double> cand_pose = *result_pose;
-          std::get<2>(cand_pose) += cand_angles[ca];
+          Pose cand_pose = *result_pose;
+          cand_pose.t += cand_angles[ca];
 
 #if (defined TIMES) || (defined LOGS)
           std::chrono::high_resolution_clock::time_point start_translation =
@@ -3818,11 +3829,11 @@ class Match
        * Update the current orientation estimate with the angle that sports the
        * least translation criterion overall
        */
-      std::get<2>(*result_pose) += cand_angles[min_tc_idx];
-      Utils::wrapAngle(&std::get<2>(*result_pose));
+      result_pose->t += cand_angles[min_tc_idx];
+      Utils::wrapAngle(&result_pose->t);
 
       /* ... and store it */
-      ts.push_back(std::get<2>(*result_pose));
+      ts.push_back(result_pose->t);
 
       /*
        * ---------------- Translation correction phase -------------------------
@@ -3864,14 +3875,14 @@ class Match
       printf("tc  = %f\n", tc_v.back());
 #endif
 
-      xs.push_back(std::get<0>(*result_pose));
-      ys.push_back(std::get<1>(*result_pose));
+      xs.push_back(result_pose->x);
+      ys.push_back(result_pose->y);
 
 #if (defined LOGS)
-      std::tuple<double,double,double> traj_i;
-      std::get<0>(traj_i) = xs.back();
-      std::get<1>(traj_i) = ys.back();
-      std::get<2>(traj_i) = ts.back();
+      Pose traj_i;
+      traj_i.x = xs.back();
+      traj_i.y = ys.back();
+      traj_i.t = ts.back();
       op->trajectory.push_back(traj_i);
 #endif
 
@@ -3958,10 +3969,10 @@ class Match
   /*****************************************************************************
   */
   static void l2recovery(
-    const std::tuple<double,double,double>& input_pose,
+    const Pose& input_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& xy_bound, const double& t_bound,
-    std::tuple<double,double,double>* output_pose,
+    Pose* output_pose,
     const unsigned int seed = 0)
   {
 #if defined (PRINTS)

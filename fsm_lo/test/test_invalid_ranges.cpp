@@ -187,7 +187,7 @@ TEST(InvalidRanges, IsValidRangeAgreesWithItsDocumentation)
 
 TEST(RecoverySeed, TheSameSeedProducesTheSameSequence)
 {
-  const std::tuple<double, double, double> base(0.0, 0.0, 0.0);
+  const FSM::Pose base;
   const std::vector<std::pair<double, double>> map{
     {-4.0, -4.0}, {4.0, -4.0}, {4.0, 4.0}, {-4.0, 4.0}};
 
@@ -201,12 +201,12 @@ TEST(RecoverySeed, TheSameSeedProducesTheSameSequence)
     std::vector<double> drawn;
     for (int i = 0; i < 8; i++)
     {
-      std::tuple<double, double, double> pose;
+      FSM::Pose pose;
       FSM::Utils::generatePose(base, map, 0.2, 0.3, 0.0, &pose,
         i == 0 ? seed : 0);
-      drawn.push_back(std::get<0>(pose));
-      drawn.push_back(std::get<1>(pose));
-      drawn.push_back(std::get<2>(pose));
+      drawn.push_back(pose.x);
+      drawn.push_back(pose.y);
+      drawn.push_back(pose.t);
     }
     return drawn;
   };

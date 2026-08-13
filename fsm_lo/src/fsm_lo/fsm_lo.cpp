@@ -24,7 +24,6 @@
 #include <cmath>
 #include <cstdint>
 #include <ranges>
-#include <tuple>
 #include <utility>
 
 namespace fsm_lo
@@ -32,16 +31,6 @@ namespace fsm_lo
 
 namespace
 {
-
-std::tuple<double, double, double> asTuple(const Pose& pose)
-{
-  return std::make_tuple(pose.x, pose.y, pose.t);
-}
-
-Pose asPose(const std::tuple<double, double, double>& tuple)
-{
-  return Pose{std::get<0>(tuple), std::get<1>(tuple), std::get<2>(tuple)};
-}
 
 FSM::input_params asInputParams(const Parameters& parameters)
 {
@@ -168,13 +157,13 @@ Matcher::process(std::span<const double> ranges)
     return std::unexpected(MatchError::no_reference_yet);
   }
 
-  const std::tuple<double, double, double> origin(0.0, 0.0, 0.0);
+  const Pose origin;
 
   std::vector<std::pair<double, double>> reference_points;
   FSM::Utils::scan2points(reference_scan_, origin, &reference_points);
 
   FSM::output_params op;
-  std::tuple<double, double, double> increment;
+  Pose increment;
   FSM::Match::fmtdbh(scan, origin, reference_points, forward_plan_,
     inverse_plan_, asInputParams(parameters_), &op, &increment);
 
@@ -184,7 +173,7 @@ Matcher::process(std::span<const double> ranges)
   reference_scan_ = std::move(scan);
 
   return MatchResult{
-    asPose(increment),
+    increment,
     accumulatedPose(),
     op.exec_time,
     op.num_recoveries};
@@ -195,7 +184,7 @@ Matcher::process(std::span<const double> ranges)
 void Matcher::setInitialPose(const Pose& pose)
 {
   accumulated_ =
-    FSM::Utils::computeTransform(asTuple(pose), Eigen::Matrix3d::Identity());
+    FSM::Utils::computeTransform(pose, Eigen::Matrix3d::Identity());
 }
 
 }  // namespace fsm_lo

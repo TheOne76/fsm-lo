@@ -50,7 +50,6 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <tuple>
 #include <vector>
 
 #include "fsm_lo/fsm_core.hpp"
@@ -64,7 +63,7 @@ const double kTightTolerance = 1e-12;
 Eigen::Matrix3d rotationOnly(const double& angle)
 {
   return FSM::Utils::computeTransform(
-    std::make_tuple(0.0, 0.0, angle), Eigen::Matrix3d::Identity());
+    FSM::Pose{0.0, 0.0, angle}, Eigen::Matrix3d::Identity());
 }
 
 }  // namespace
@@ -99,7 +98,7 @@ TEST(ComputeTransform, RecoveredAngleSurvivesRepeatedComposition)
 
   Eigen::Matrix3d m = Eigen::Matrix3d::Identity();
   for (unsigned int i = 0; i < steps; i++)
-    m = FSM::Utils::computeTransform(std::make_tuple(0.0, 0.0, step), m);
+    m = FSM::Utils::computeTransform(FSM::Pose{0.0, 0.0, step}, m);
 
   EXPECT_NEAR(std::atan2(m(1, 0), m(0, 0)), steps * step, kTightTolerance);
 }
@@ -107,7 +106,7 @@ TEST(ComputeTransform, RecoveredAngleSurvivesRepeatedComposition)
 TEST(ComputeTransform, TranslationIsUnaffectedByOrientation)
 {
   const Eigen::Matrix3d m = FSM::Utils::computeTransform(
-    std::make_tuple(1.25, -0.5, kAngle), Eigen::Matrix3d::Identity());
+    FSM::Pose{1.25, -0.5, kAngle}, Eigen::Matrix3d::Identity());
 
   EXPECT_NEAR(m(0, 2), 1.25, kTightTolerance);
   EXPECT_NEAR(m(1, 2), -0.5, kTightTolerance);
