@@ -159,8 +159,8 @@ Matcher::process(std::span<const double> ranges)
 
   const Pose origin;
 
-  std::vector<std::pair<double, double>> reference_points;
-  FSM::Utils::scan2points(reference_scan_, origin, &reference_points);
+  const std::vector<std::pair<double, double>> reference_points =
+    FSM::Utils::scan2points(reference_scan_, origin);
 
   FSM::output_params op;
   Pose increment;

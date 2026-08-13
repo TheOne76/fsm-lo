@@ -44,9 +44,7 @@ double yawOf(const geometry_msgs::msg::Quaternion& orientation)
   double yaw = 0.0;
   tf2::Matrix3x3(quaternion).getRPY(roll, pitch, yaw);
 
-  FSM::Utils::wrapAngle(&yaw);
-
-  return yaw;
+  return FSM::Utils::wrapAngle(yaw);
 }
 
 rclcpp::QoS scanQos(const std::string& reliability, int depth)

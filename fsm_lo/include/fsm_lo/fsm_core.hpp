@@ -90,6 +90,17 @@ struct Pose
   double t{0.0};
 };
 /* ========================================================================== */
+/*
+ * Two scans compared ray by ray. diff_true is every difference as it stands;
+ * diff is the same with any difference outside the inclusion bound replaced by
+ * zero, so a ray that disagrees wildly cannot pull the match with it.
+ */
+struct ScanDifference
+{
+  std::vector<double> diff;
+  std::vector<double> diff_true;
+};
+/* ========================================================================== */
 struct input_params
 {
   unsigned int num_iterations;
@@ -643,15 +654,13 @@ class Utils
 
   /*****************************************************************************
   */
-  static void diffScansPerRay(
+  static ScanDifference diffScansPerRay(
     const std::vector<double>& scan1, const std::vector<double>& scan2,
-    const double& inclusion_bound, std::vector<double>* diff,
-    std::vector<double>* diff_true)
+    const double& inclusion_bound)
   {
     assert (scan1.size() == scan2.size());
 
-    diff->clear();
-    diff_true->clear();
+    ScanDifference difference;
 
     double eps = 0.000001;
     if (inclusion_bound < 0.0001)
@@ -667,12 +676,14 @@ class Utils
       d = scan1[i] - scan2[i];
 
       if (fabs(d) <= inclusion_bound + eps)
-        diff->push_back(d);
+        difference.diff.push_back(d);
       else
-        diff->push_back(0.0);
+        difference.diff.push_back(0.0);
 
-      diff_true->push_back(d);
+      difference.diff_true.push_back(d);
     }
+
+    return difference;
   }
 
   /*****************************************************************************
@@ -703,7 +714,7 @@ class Utils
     virtual_pose->y = real_pose.y + ry;
     virtual_pose->t = real_pose.t + rt;
 
-    wrapAngle(&virtual_pose->t);
+    virtual_pose->t = wrapAngle(virtual_pose->t);
   }
 
   /*****************************************************************************
@@ -732,9 +743,7 @@ class Utils
     /* Fill in the orientation regardless */
     double rt = distribution_t(generator_t);
     real_pose_ass.t = base_pose.t + rt;
-    double t = real_pose_ass.t;
-    Utils::wrapAngle(&t);
-    real_pose_ass.t = t;
+    real_pose_ass.t = Utils::wrapAngle(real_pose_ass.t);
 
     /*
      * We assume that the lidar sensor is distanced from the closest obstacle
@@ -772,8 +781,8 @@ class Utils
     /* Verify distance threshold */
     std::vector< std::pair<double,double> > intersections =
       X::find(real_pose_ass, map, map.size());
-    std::vector<double> real_scan;
-    points2scan(intersections, real_pose_ass, &real_scan);
+    const std::vector<double> real_scan =
+      points2scan(intersections, real_pose_ass);
 
     unsigned int min_dist_idx =
       std::min_element(real_scan.begin(), real_scan.end()) - real_scan.begin();
@@ -865,8 +874,8 @@ class Utils
     /* Verify distance threshold */
     std::vector< std::pair<double,double> > intersections =
       X::find(real_pose_ass, map, map.size());
-    std::vector<double> real_scan;
-    points2scan(intersections, real_pose_ass, &real_scan);
+    const std::vector<double> real_scan =
+      points2scan(intersections, real_pose_ass);
 
     unsigned int min_dist_idx =
       std::min_element(real_scan.begin(), real_scan.end()) - real_scan.begin();
@@ -1052,17 +1061,16 @@ class Utils
 
   /*****************************************************************************
   */
-  static void points2scan(
+  static std::vector<double> points2scan(
     const std::vector< std::pair<double,double> >& points,
-    const Pose& pose,
-    std::vector<double>* scan)
+    const Pose& pose)
   {
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
 #endif
 
-    scan->clear();
+    std::vector<double> scan;
 
     double px = pose.x;
     double py = pose.y;
@@ -1073,7 +1081,7 @@ class Utils
     {
       dx = points[i].first - px;
       dy = points[i].second - py;
-      scan->push_back(sqrt(dx*dx+dy*dy));
+      scan.push_back(sqrt(dx*dx+dy*dy));
     }
 
 #ifdef TIMES
@@ -1084,14 +1092,15 @@ class Utils
 
     printf("%f [points2scan]\n", elapsed.count());
 #endif
+
+    return scan;
   }
 
   /*****************************************************************************
   */
-  static void scan2points(
+  static std::vector< std::pair<double,double> > scan2points(
     const std::vector<double>& scan,
     const Pose pose,
-    std::vector< std::pair<double,double> >* points,
     const double& angle_span = 2*M_PI)
   {
 #ifdef TIMES
@@ -1099,7 +1108,7 @@ class Utils
       std::chrono::high_resolution_clock::now();
 #endif
 
-    points->clear();
+    std::vector< std::pair<double,double> > points;
 
     double px = pose.x;
     double py = pose.y;
@@ -1115,7 +1124,7 @@ class Utils
       double y =
         py + scan[i] * sin(i * angle_span / scan.size() + pt + sa);
 
-      points->push_back(std::make_pair(x,y));
+      points.push_back(std::make_pair(x,y));
     }
 
 #ifdef TIMES
@@ -1126,22 +1135,21 @@ class Utils
 
     printf("%f [scan2points]\n", elapsed.count());
 #endif
+
+    return points;
   }
 
   /*****************************************************************************
   */
-  static void scanFromPose(
+  static std::vector<double> scanFromPose(
     const Pose& pose,
     const std::vector< std::pair<double,double> >& points,
-    const unsigned int& num_rays,
-    std::vector<double>* scan)
+    const unsigned int& num_rays)
   {
-    scan->clear();
-
     std::vector< std::pair<double,double> > intersections =
       X::find(pose, points, num_rays);
 
-    points2scan(intersections, pose, scan);
+    return points2scan(intersections, pose);
   }
 
   /*****************************************************************************
@@ -1162,12 +1170,12 @@ class Utils
     zero_pose.t = 0.0;
 
     /* Turn scan to points */
-    std::vector< std::pair<double,double> > scan_points;
-    scan2points(scan_in, zero_pose, &scan_points);
+    const std::vector< std::pair<double,double> > scan_points =
+      scan2points(scan_in, zero_pose);
 
     /* scan_out: the ranges to `scan_points` from `zero_pose` */
-    std::vector<double> scan_out;
-    scanFromPose(zero_pose, scan_points, sz, &scan_out);
+    const std::vector<double> scan_out =
+      scanFromPose(zero_pose, scan_points, sz);
 
     return scan_out;
   }
@@ -1205,9 +1213,9 @@ class Utils
 
   /***************************************************************************
   */
-  static void wrapAngle(double* angle)
+  static double wrapAngle(const double angle)
   {
-    *angle = fmod(*angle + 5*M_PI, 2*M_PI) - M_PI;
+    return fmod(angle + 5*M_PI, 2*M_PI) - M_PI;
   }
 };
 
@@ -1331,7 +1339,7 @@ class DatasetUtils
         pose_d = pose_d.substr(sz);
         double py = std::stod(pose_d,&sz);
         double pt = std::stod(pose_d.substr(sz));
-        Utils::wrapAngle(&pt);
+        pt = Utils::wrapAngle(pt);
         *pose = Pose{px,py,pt};
 
         continue;
@@ -1541,7 +1549,7 @@ class DatasetUtils
         pose = pose.substr(sz);
         double py = std::stod(pose,&sz);
         double pt = std::stod(pose.substr(sz));
-        Utils::wrapAngle(&pt);
+        pt = Utils::wrapAngle(pt);
         poses->push_back(Pose{px,py,pt});
 
         continue;
@@ -1597,11 +1605,11 @@ class Dump
     const Pose& virtual_pose,
     const std::string& dump_filepath)
   {
-    std::vector< std::pair<double,double> > real_scan_points;
-    Utils::scan2points(real_scan, real_pose, &real_scan_points);
+    const std::vector< std::pair<double,double> > real_scan_points =
+      Utils::scan2points(real_scan, real_pose);
 
-    std::vector< std::pair<double,double> > virtual_scan_points;
-    Utils::scan2points(virtual_scan, virtual_pose, &virtual_scan_points);
+    const std::vector< std::pair<double,double> > virtual_scan_points =
+      Utils::scan2points(virtual_scan, virtual_pose);
 
     std::ofstream file(dump_filepath.c_str(), std::ios::trunc);
 
@@ -1864,8 +1872,8 @@ class ScanCompletion
     std::vector<double> scan_copy = *scan;
 
     /* Locate the first and last points of the scan in the 2D plane */
-    std::vector< std::pair<double,double> > points;
-    Utils::scan2points(scan_copy, pose, &points);
+    const std::vector< std::pair<double,double> > points =
+      Utils::scan2points(scan_copy, pose);
     std::pair<double,double> start_point = points[0];
     std::pair<double,double> end_point = points[points.size()-1];
 
@@ -1935,8 +1943,8 @@ class ScanCompletion
     std::vector< std::pair<double,double> >* map,
     Pose* map_origin)
   {
-    std::vector< std::pair<double,double> > scan_points;
-    Utils::scan2points(scan_in, pose, &scan_points, M_PI);
+    const std::vector< std::pair<double,double> > scan_points =
+      Utils::scan2points(scan_in, pose, M_PI);
 
     Pose pose_within_points = pose;
 
@@ -1956,7 +1964,7 @@ class ScanCompletion
     }
 
     *map_origin = pose_within_points;
-    Utils::points2scan(*map, *map_origin, scan_out);
+    *scan_out = Utils::points2scan(*map, *map_origin);
   }
 };
 
@@ -2653,8 +2661,8 @@ class Translation
         std::chrono::duration_cast< std::chrono::duration<double> >(int_end-int_start);
 
       /* Find the corresponding ranges */
-      std::vector<double> virtual_scan_it;
-      Utils::points2scan(virtual_scan_intersections, current_pose, &virtual_scan_it);
+      const std::vector<double> virtual_scan_it =
+        Utils::points2scan(virtual_scan_intersections, current_pose);
 
       assert(virtual_scan_it.size() == real_scan.size());
 
@@ -2780,8 +2788,9 @@ class Translation
   {
     assert(inclusion_bound >= 0);
 
-    std::vector<double> diff;
-    Utils::diffScansPerRay(real_scan, virtual_scan, inclusion_bound, &diff, d_v);
+    const auto [diff, diff_true] =
+      Utils::diffScansPerRay(real_scan, virtual_scan, inclusion_bound);
+    *d_v = diff_true;
 
     /* X1 */
     std::vector<double> X1 = DFTUtils::getFirstDFTCoefficient(diff, r2rp);
@@ -2847,7 +2856,7 @@ public:
   {
     double dt = 2*M_PI*rotation_id / scan_size;
 
-    Utils::wrapAngle(&dt);
+    dt = Utils::wrapAngle(dt);
 
     return dt;
   }
@@ -2920,8 +2929,8 @@ public:
     *intersections_time =
       std::chrono::duration_cast< std::chrono::duration<double> >(int_end-int_start);
 
-    std::vector<double> virtual_scan_fine;
-    Utils::points2scan(virtual_scan_points, virtual_pose, &virtual_scan_fine);
+    const std::vector<double> virtual_scan_fine =
+      Utils::points2scan(virtual_scan_points, virtual_pose);
 
     /*
      * Downsample from upper limit:
@@ -2962,7 +2971,7 @@ public:
       fmt1Sequential(real_scan, virtual_scans[a], &angle, &snr, &fahm, &pd);
 
       double ornt_a = -angle + a*mul*ang_inc;
-      Utils::wrapAngle(&ornt_a);
+      ornt_a = Utils::wrapAngle(ornt_a);
 
       orientations.push_back(ornt_a);
       snrs.push_back(snr);
@@ -2986,7 +2995,7 @@ public:
     for (unsigned int i = 0; i < optimal_ids.size(); i++)
     {
       double angle = orientations[optimal_ids[i]];
-      Utils::wrapAngle(&angle);
+      angle = Utils::wrapAngle(angle);
       angles.push_back(angle);
 
       rc0->push_back(pds[optimal_ids[i]]);
@@ -3025,7 +3034,7 @@ public:
     /* Calculate angle */
     *angle = static_cast<double>(
       (real_scan.size()-q_0_max_id))/(real_scan.size())*2*M_PI;
-    Utils::wrapAngle(angle);
+    *angle = Utils::wrapAngle(*angle);
 
     /* Calculate SNR */
     std::vector<double> q_0_background = q_0;
@@ -3186,8 +3195,8 @@ public:
     *intersections_time =
       std::chrono::duration_cast< std::chrono::duration<double> >(int_end-int_start);
 
-    std::vector<double> virtual_scan_fine;
-    Utils::points2scan(virtual_scan_points, virtual_pose, &virtual_scan_fine);
+    const std::vector<double> virtual_scan_fine =
+      Utils::points2scan(virtual_scan_points, virtual_pose);
 
     /*
      * Downsample from upper limit:
@@ -3232,7 +3241,7 @@ public:
     for (unsigned int a = 0; a < num_virtual_scans; a++)
     {
       double angle_a = -un_angles[a] + a*mul*ang_inc;
-      Utils::wrapAngle(&angle_a);
+      angle_a = Utils::wrapAngle(angle_a);
 
       angles.push_back(angle_a);
     }
@@ -3296,7 +3305,7 @@ public:
       /* Calculate angle */
       double angle = static_cast<double>(
         (real_scan.size()-q_0_max_id_v[i]))/(real_scan.size())*2*M_PI;
-      Utils::wrapAngle(&angle);
+      angle = Utils::wrapAngle(angle);
 
       angles->push_back(angle);
 
@@ -3791,7 +3800,7 @@ class Match
        * least translation criterion overall
        */
       result_pose->t += cand_angles[min_tc_idx];
-      Utils::wrapAngle(&result_pose->t);
+      result_pose->t = Utils::wrapAngle(result_pose->t);
 
       /* ... and store it */
       ts.push_back(result_pose->t);

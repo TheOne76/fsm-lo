@@ -171,10 +171,8 @@ TEST(TranslationStage, FirstCoefficientNormIsDoublePrecision)
   FSM::Translation::tffCore(real_scan, virtual_scan, 0.0, 1000.0, r2rp,
     &d_v, &norm_x1);
 
-  std::vector<double> diff;
-  std::vector<double> d_v_expected;
-  FSM::Utils::diffScansPerRay(real_scan, virtual_scan, 1000.0, &diff,
-    &d_v_expected);
+  const auto [diff, d_v_expected] =
+    FSM::Utils::diffScansPerRay(real_scan, virtual_scan, 1000.0);
   const std::vector<double> x1 =
     FSM::DFTUtils::getFirstDFTCoefficient(diff, r2rp);
   const double expected = std::sqrt(x1[0] * x1[0] + x1[1] * x1[1]);
