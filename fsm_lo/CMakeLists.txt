@@ -114,6 +114,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_fsm_lo_core_golden
     test/test_core_golden.cpp)
 
+  ament_add_gtest(test_fsm_lo_invalid_ranges
+    test/test_invalid_ranges.cpp)
+
   find_package(launch_testing_ament_cmake REQUIRED)
 
   # The launch runner imports a test file directly rather than through pytest,
@@ -127,7 +130,8 @@ if(BUILD_TESTING)
   add_launch_test(test/test_node_behaviour.py TIMEOUT 400
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test)
 
-  foreach(test_target test_fsm_lo_core test_fsm_lo_core_golden)
+  foreach(test_target test_fsm_lo_core test_fsm_lo_core_golden
+                      test_fsm_lo_invalid_ranges)
     if(TARGET ${test_target})
       target_link_libraries(${test_target} fsm_lo_core)
       target_compile_options(${test_target} PRIVATE

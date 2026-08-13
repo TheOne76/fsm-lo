@@ -87,7 +87,20 @@ enum class MatchError
 
   /** The scan carried fewer ranges than the configured scan size. */
   scan_too_short,
+
+  /** Every range in the scan was invalid, so there is nothing to match. */
+  scan_entirely_invalid,
 };
+
+/**
+ * @brief Whether a range reading carries a usable distance.
+ *
+ * A lidar reports a ray that struck nothing, or a reading it could not trust,
+ * in one of three ways: zero, infinity, or not-a-number. Which of the three it
+ * picks is a matter of driver convention. All three mean the same thing here,
+ * and are filled in from the rays around them before matching.
+ */
+bool isValidRange(double range);
 
 /**
  * @brief Validate a parameter set.
@@ -107,7 +120,6 @@ class Matcher
 {
 public:
   explicit Matcher(const Parameters& parameters);
-  ~Matcher();
 
   Matcher(const Matcher&) = delete;
   Matcher& operator=(const Matcher&) = delete;
@@ -142,8 +154,13 @@ public:
 private:
   Parameters parameters_;
 
-  fftw_plan forward_plan_{nullptr};
-  fftw_plan inverse_plan_{nullptr};
+  /*
+   * Owned by the shared plan cache, which keeps them for the life of the
+   * process. Creating one is expensive and, under FFTW_MEASURE, involves
+   * timing trials, so they are not per matcher resources.
+   */
+  fftw_plan forward_plan_;
+  fftw_plan inverse_plan_;
 
   std::vector<double> reference_scan_;
   std::vector<Pose> trajectory_;

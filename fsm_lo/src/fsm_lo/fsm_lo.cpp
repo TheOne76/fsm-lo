@@ -19,7 +19,11 @@
 // SOFTWARE.
 #include "fsm_lo/fsm_lo.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
+#include <ranges>
 #include <tuple>
 #include <utility>
 
@@ -56,6 +60,27 @@ FSM::input_params asInputParams(const Parameters& parameters)
 
 /*******************************************************************************
 */
+bool isValidRange(const double range)
+{
+  /*
+   * The exponent is inspected directly rather than asking std::isfinite.
+   * This package ships compiled with -Ofast, which implies -ffinite-math-only,
+   * under which the compiler is entitled to assume no infinity or NaN ever
+   * exists and folds std::isfinite to a constant true. The check would then
+   * silently do nothing in exactly the build that ships, which is the worst
+   * possible outcome for a guard. Reading the bits cannot be assumed away.
+   */
+  const std::uint64_t bits = std::bit_cast<std::uint64_t>(range);
+  const std::uint64_t exponent = (bits >> 52) & 0x7FFU;
+
+  if (exponent == 0x7FFU)
+    return false;
+
+  return range > 0.0;
+}
+
+/*******************************************************************************
+*/
 std::string validate(const Parameters& parameters)
 {
   if (parameters.size_scan == 0)
@@ -85,38 +110,10 @@ std::string validate(const Parameters& parameters)
 /*******************************************************************************
 */
 Matcher::Matcher(const Parameters& parameters)
-: parameters_(parameters)
+: parameters_(parameters),
+  forward_plan_(FSM::DFTUtils::forwardPlan(parameters.size_scan)),
+  inverse_plan_(FSM::DFTUtils::inversePlan(parameters.size_scan))
 {
-  const std::size_t size = parameters_.size_scan;
-
-  double* forward_in = static_cast<double*>(fftw_malloc(size * sizeof(double)));
-  double* forward_out = static_cast<double*>(fftw_malloc(size * sizeof(double)));
-  forward_plan_ = fftw_plan_r2r_1d(static_cast<int>(size), forward_in,
-    forward_out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
-
-  fftw_complex* inverse_in =
-    static_cast<fftw_complex*>(fftw_malloc(size * sizeof(fftw_complex)));
-  double* inverse_out = static_cast<double*>(fftw_malloc(size * sizeof(double)));
-  inverse_plan_ = fftw_plan_dft_c2r_1d(static_cast<int>(size), inverse_in,
-    inverse_out, FSM_LO_FFTW_PLAN_FLAG);
-
-  fftw_free(forward_in);
-  fftw_free(forward_out);
-  fftw_free(inverse_in);
-  fftw_free(inverse_out);
-}
-
-/*******************************************************************************
-*/
-Matcher::~Matcher()
-{
-  if (forward_plan_ != nullptr)
-    fftw_destroy_plan(forward_plan_);
-
-  if (inverse_plan_ != nullptr)
-    fftw_destroy_plan(inverse_plan_);
-
-  fftw_cleanup();
 }
 
 /*******************************************************************************
@@ -145,9 +142,21 @@ Matcher::process(std::span<const double> ranges)
   if (ranges.size() < parameters_.size_scan)
     return std::unexpected(MatchError::scan_too_short);
 
-  std::vector<double> scan =
-    FSM::DatasetUtils::interpolateRanges(
-      std::vector<double>(ranges.begin(), ranges.end()));
+  /*
+   * Infinity and not-a-number both mean "no reading" and both destroy a
+   * frequency transform outright: one such ray contaminates every coefficient.
+   * They are normalised to zero here, which is the form the gap filling below
+   * already understands, so all three ways a driver can say "nothing here" are
+   * treated alike.
+   */
+  std::vector<double> scan(ranges.begin(), ranges.end());
+  std::ranges::replace_if(scan,
+    [](const double range) { return !isValidRange(range); }, 0.0);
+
+  if (std::ranges::none_of(scan, isValidRange))
+    return std::unexpected(MatchError::scan_entirely_invalid);
+
+  scan = FSM::DatasetUtils::interpolateRanges(scan);
   scan = FSM::Utils::subsampleScan(scan, parameters_.size_scan);
 
   scans_seen_++;

@@ -32,7 +32,9 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <random>
 #include <string>
@@ -328,9 +330,9 @@ class X
 
 
       std::pair<double,double> intersection_point;
-      int segment_id;
+      int segment_id = 0;
       bool success = false;
-      int inc = lines.size()/16;
+      const int inc = std::max<int>(1, lines.size()/16);
 
       /*
        * Start off with the first ray. Scan the whole `lines` vector and find
@@ -341,7 +343,19 @@ class X
        * IF there is no intersection between [start, start+inc] then start from
        * start+inc and go up to start+2inc... and do this until you find a hit.
        */
-      while(!success)
+      /*
+       * The window is widened until the ray hits something. Bound the widening
+       * by the number of segments there are: without a bound, a ray that hits
+       * nothing widens the window until start0 overflows, after which the
+       * search indexes the segment vector with a negative number and the
+       * process dies. A ray can fail to hit when the pose has wandered outside
+       * the polygon, or when a run of equal ranges has made a stretch of it
+       * collinear.
+       */
+      const int max_widenings = static_cast<int>(lines.size()) / inc + 2;
+      int widenings = 0;
+
+      while (!success && widenings < max_widenings)
       {
         success = findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
           start0, end0, tan_peligro,
@@ -353,6 +367,39 @@ class X
           start0 += inc;
 
         end0 = start0 + inc;
+        widenings++;
+      }
+
+      /* Widening found nothing, so look at every segment once */
+      if (!success)
+      {
+        start0 = 0;
+        end0 = static_cast<int>(lines.size());
+
+        success = findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
+          start0, end0, tan_peligro,
+          &intersection_point, &segment_id);
+
+        if (success)
+        {
+          start0 = segment_id;
+          end0 = start0 + inc;
+        }
+      }
+
+      /*
+       * The ray genuinely hits nothing. A scan is continuous, so the nearest
+       * thing to the truth is what the previous ray saw; for the first ray
+       * there is nothing better than the pose itself.
+       */
+      if (!success)
+      {
+        intersection_point = intersections.empty()
+          ? std::make_pair(px, py)
+          : intersections.back();
+
+        start0 = 0;
+        end0 = static_cast<int>(lines.size());
       }
 
       intersections.push_back(intersection_point);
@@ -1880,6 +1927,62 @@ class DFTUtils
   public:
 
   /*****************************************************************************
+   * Plans are expensive to create and, under FFTW_MEASURE, creating one runs
+   * timing trials. The transforms below were creating and destroying one on
+   * every call, at every oversampling size, which dominated their cost.
+   *
+   * Plans are keyed by size and kept for the life of the process. Creation is
+   * serialised because FFTW's planner is not thread safe; execution is not,
+   * because executing a plan on freshly supplied arrays is.
+   */
+  static fftw_plan forwardPlan(const std::size_t size)
+  {
+    static std::mutex mutex;
+    static std::map<std::size_t, fftw_plan> plans;
+
+    const std::lock_guard<std::mutex> lock(mutex);
+
+    const auto found = plans.find(size);
+    if (found != plans.end())
+      return found->second;
+
+    double* in = (double*) fftw_malloc(size * sizeof(double));
+    double* out = (double*) fftw_malloc(size * sizeof(double));
+    const fftw_plan plan = fftw_plan_r2r_1d(size, in, out, FFTW_R2HC,
+      FSM_LO_FFTW_PLAN_FLAG);
+    fftw_free(in);
+    fftw_free(out);
+
+    plans.emplace(size, plan);
+    return plan;
+  }
+
+  /*****************************************************************************
+  */
+  static fftw_plan inversePlan(const std::size_t size)
+  {
+    static std::mutex mutex;
+    static std::map<std::size_t, fftw_plan> plans;
+
+    const std::lock_guard<std::mutex> lock(mutex);
+
+    const auto found = plans.find(size);
+    if (found != plans.end())
+      return found->second;
+
+    fftw_complex* in =
+      (fftw_complex*) fftw_malloc(size * sizeof(fftw_complex));
+    double* out = (double*) fftw_malloc(size * sizeof(double));
+    const fftw_plan plan =
+      fftw_plan_dft_c2r_1d(size, in, out, FSM_LO_FFTW_PLAN_FLAG);
+    fftw_free(in);
+    fftw_free(out);
+
+    plans.emplace(size, plan);
+    return plan;
+  }
+
+  /*****************************************************************************
   */
   static void fftshift(std::vector<double>* vec)
   {
@@ -2081,15 +2184,14 @@ class DFTUtils
     in = (double*) fftw_malloc(num_rays * sizeof(double));
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
-    /* Create plan */
-    fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
+    const fftw_plan p = forwardPlan(num_rays);
 
     /* Transfer the input vector to a structure preferred by fftw */
     for (unsigned int i = 0; i < num_rays; i++)
       in[i] = rays_diff[i];
 
     /* Execute plan */
-    fftw_execute(p);
+    fftw_execute_r2r(p, in, out);
 
     /* Store all DFT coefficients */
     std::vector<double> dft_coeff_vector;
@@ -2097,7 +2199,6 @@ class DFTUtils
       dft_coeff_vector.push_back(out[i]);
 
     /* Free memory */
-    fftw_destroy_plan(p);
     fftw_free(out);
     fftw_free(in);
 
@@ -2195,7 +2296,7 @@ class DFTUtils
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
     /* Create plan once */
-    fftw_plan p = fftw_plan_r2r_1d(num_rays, in, out, FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
+    const fftw_plan p = forwardPlan(num_rays);
 
     for (unsigned int v = 0; v < scans.size(); v++)
     {
@@ -2215,7 +2316,6 @@ class DFTUtils
     }
 
     /* Free memory */
-    fftw_destroy_plan(p);
     fftw_free(out);
     fftw_free(in);
 
@@ -2317,8 +2417,7 @@ class DFTUtils
     in = (fftw_complex*) fftw_malloc(num_rays * sizeof(fftw_complex));
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
-    /* Create plan */
-    fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FSM_LO_FFTW_PLAN_FLAG);
+    const fftw_plan p = inversePlan(num_rays);
 
     /* Transfer the input vector to a structure preferred by fftw */
     for (unsigned int i = 0; i < num_rays; i++)
@@ -2328,7 +2427,7 @@ class DFTUtils
     }
 
     /* Execute plan */
-    fftw_execute(p);
+    fftw_execute_dft_c2r(p, in, out);
 
     /* Store all DFT coefficients */
     std::vector<double> dft_coeff_vector;
@@ -2336,7 +2435,6 @@ class DFTUtils
       dft_coeff_vector.push_back(out[i]/num_rays);
 
     /* Free memory */
-    fftw_destroy_plan(p);
     fftw_free(out);
     fftw_free(in);
 
@@ -2377,7 +2475,7 @@ class DFTUtils
     out = (double*) fftw_malloc(num_rays * sizeof(double));
 
     /* Create plan once */
-    fftw_plan p = fftw_plan_dft_c2r_1d(num_rays, in, out, FSM_LO_FFTW_PLAN_FLAG);
+    const fftw_plan p = inversePlan(num_rays);
 
 
     for (unsigned int v = 0; v < scans.size(); v++)
@@ -2401,7 +2499,6 @@ class DFTUtils
     }
 
     /* Free memory */
-    fftw_destroy_plan(p);
     fftw_free(out);
     fftw_free(in);
 

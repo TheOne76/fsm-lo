@@ -43,7 +43,7 @@
     # Axis-wise and angular radii for generating a new initial estimate when a
     # match goes badly and a recovery is attempted
     xy_bound: 0.2
-    t_bound:  0.786
+    t_bound:  0.785398163397448
 
     # Lower values decrease execution time
     max_counter:    200
