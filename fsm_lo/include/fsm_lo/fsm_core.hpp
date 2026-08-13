@@ -152,7 +152,7 @@ class X
     std::vector< std::pair<double,double> > intersections;
     double mul = 100000000.0;
 
-    for (int i = 0; i < num_rays; i++)
+    for (std::size_t i = 0; i < num_rays; i++)
     {
       double t_ray = i * 2*M_PI / num_rays + pt - M_PI;
       t_ray = fmod(t_ray + 5*M_PI, 2*M_PI) - M_PI;
@@ -170,7 +170,7 @@ class X
 
       std::vector< std::pair<double,double> > candidate_points;
 
-      for (int l = 0; l < lines.size(); l++)
+      for (std::size_t l = 0; l < lines.size(); l++)
       {
         /* The index of the first sensed point */
         int idx_1 = l;
@@ -179,10 +179,10 @@ class X
         int idx_2 = idx_1 + 1;
 
 
-        if (idx_2 >= lines.size())
+        if (idx_2 >= static_cast<int>(lines.size()))
           idx_2 = fmod(idx_2, lines.size());
 
-        if (idx_1 >= lines.size())
+        if (idx_1 >= static_cast<int>(lines.size()))
           idx_1 = fmod(idx_1, lines.size());
 
         double det_1 =
@@ -255,7 +255,7 @@ class X
 
       double min_r = 100000000.0;
       int idx = -1;
-      for (int c = 0; c < candidate_points.size(); c++)
+      for (std::size_t c = 0; c < candidate_points.size(); c++)
       {
         double dx = candidate_points[c].first - px;
         double dy = candidate_points[c].second - py;
@@ -311,7 +311,7 @@ class X
     int start0 = 0;
     int end0 = lines.size();
 
-    for (int i = 0; i < num_rays; i++)
+    for (std::size_t i = 0; i < num_rays; i++)
     {
       double t_ray = i * 2*M_PI / num_rays + pt - M_PI;
       t_ray = fmod(t_ray + 5*M_PI, 2*M_PI) - M_PI;
@@ -394,10 +394,10 @@ class X
       /* The index of the second sensed point (in counter-clockwise order) */
       int idx_2 = idx_1 + 1;
 
-      if (idx_2 >= lines.size())
+      if (idx_2 >= static_cast<int>(lines.size()))
         idx_2 = fmod(idx_2, lines.size());
 
-      if (idx_1 >= lines.size())
+      if (idx_1 >= static_cast<int>(lines.size()))
         idx_1 = fmod(idx_1, lines.size());
 
       double det_1 =
@@ -470,7 +470,7 @@ class X
 
     double min_r = 100000000.0;
     int idx = -1;
-    for (int c = 0; c < candidate_points.size(); c++)
+    for (std::size_t c = 0; c < candidate_points.size(); c++)
     {
       double dx = candidate_points[c].first - px;
       double dy = candidate_points[c].second - py;
@@ -543,7 +543,7 @@ class Utils
 #endif
 
     std::vector< std::pair<double,double> > ret_vector;
-    for (int i = 0; i < vec.size(); i++)
+    for (std::size_t i = 0; i < vec.size(); i++)
       ret_vector.push_back(std::make_pair(vec[i].first, -vec[i].second));
 
 #ifdef TIMES
@@ -802,7 +802,7 @@ class Utils
 
     std::vector<double> ret_vector;
 
-    for (int i = 0; i < vec1.size(); i++)
+    for (std::size_t i = 0; i < vec1.size(); i++)
     {
       ret_vector.push_back(vec1[i] * vec2[i]);
     }
@@ -825,7 +825,7 @@ class Utils
 
     std::vector< std::pair<double, double> > ret_vector;
 
-    for (int i = 0; i < vec1.size(); i++)
+    for (std::size_t i = 0; i < vec1.size(); i++)
     {
       double re =
         vec1[i].first * vec2[i].first - vec1[i].second * vec2[i].second;
@@ -857,7 +857,7 @@ class Utils
 
     /* Construct polygon from map */
     Polygon_2 poly;
-    for (int p = 0; p < map.size(); p++)
+    for (std::size_t p = 0; p < map.size(); p++)
       poly.push_back(Point_2(map[p].first, map[p].second));
 
     poly.push_back(Point_2(map[map.size()-1].first, map[map.size()-1].second));
@@ -918,7 +918,7 @@ class Utils
   {
     std::vector< std::pair<double,double> > return_vector;
 
-    for (int i = 0; i < points.size(); i++)
+    for (std::size_t i = 0; i < points.size(); i++)
       return_vector.push_back(multiplyWithRotationMatrix(points[i], angle));
 
     return return_vector;
@@ -938,7 +938,7 @@ class Utils
   {
     std::vector<double> ret_vector;
 
-    for (int i = 0; i < vec.size(); i++)
+    for (std::size_t i = 0; i < vec.size(); i++)
       ret_vector.push_back(norm(vec[i]));
 
     return ret_vector;
@@ -950,7 +950,7 @@ class Utils
   {
     std::vector<double> ret_vector;
 
-    for (int i = 0; i < vec.size(); i++)
+    for (std::size_t i = 0; i < vec.size(); i++)
       ret_vector.push_back(norm(vec[i]));
 
     return accumulate(ret_vector.begin(), ret_vector.end(), 0.0);
@@ -988,7 +988,7 @@ class Utils
 
     double dx = 0.0;
     double dy = 0.0;
-    for (int i = 0; i < points.size(); i++)
+    for (std::size_t i = 0; i < points.size(); i++)
     {
       dx = points[i].first - px;
       dy = points[i].second - py;
@@ -1027,7 +1027,7 @@ class Utils
     /* The angle of the first ray (in the local coordinate system) */
     double sa = -angle_span/2;
 
-    for (int i = 0; i < scan.size(); i++)
+    for (std::size_t i = 0; i < scan.size(); i++)
     {
       double x =
         px + scan[i] * cos(i * angle_span / scan.size() + pt + sa);
@@ -1098,7 +1098,7 @@ class Utils
   {
     std::vector< std::pair<double,double> > ret_vector;
 
-    for (int i = 0; i < vec.size()-1; i++)
+    for (std::size_t i = 0; i < vec.size()-1; i++)
       ret_vector.push_back(pairDiff(vec[i], vec[i+1]));
 
     return ret_vector;
@@ -1114,7 +1114,7 @@ class Utils
 
     std::vector<double> diff(v.size());
     std::transform(v.begin(), v.end(), diff.begin(),
-      std::bind2nd(std::minus<double>(), mean));
+      [mean](const double v) { return v - mean; });
     double sq_sum =
       std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0);
     double stdev = std::sqrt(sq_sum / v.size());
@@ -1146,12 +1146,12 @@ class DatasetUtils
 
       readDataset(dataset_filepath, &ranges, &poses);
 
-      int num_scans = ranges.size();
+      [[maybe_unused]] int num_scans = ranges.size();
       int num_rays = ranges[0].size();
       double angle_span = M_PI;
 
       std::vector< std::vector< std::pair<double,double> > > polygons;
-      for (int s = 0; s < ranges.size(); s++)
+      for (std::size_t s = 0; s < ranges.size(); s++)
       {
         double px = std::get<0>(poses[s]);
         double py = std::get<1>(poses[s]);
@@ -1159,7 +1159,7 @@ class DatasetUtils
 
         std::vector< std::pair<double,double> > polygon;
 
-        for (int r = 0; r < ranges[s].size(); r++)
+        for (std::size_t r = 0; r < ranges[s].size(); r++)
         {
           double x =
             px + ranges[s][r] * cos(r*angle_span/(num_rays-1) + pt -angle_span/2);
@@ -1205,7 +1205,7 @@ class DatasetUtils
     size_t len = 0;
 
     unsigned int line_number = 0;
-    long int num_scans = 0;
+    [[maybe_unused]] long int num_scans = 0;
     long int num_rays = 0;
     while ((getline(&line, &len, fp)) != -1 && line_number < 1)
     {
@@ -1277,14 +1277,14 @@ class DatasetUtils
     std::vector< std::vector <int> > regions;
     int i = 0;
     int j;
-    while(i < ranges.size())
+    while(i < static_cast<int>(ranges.size()))
     {
       if (ranges[i] == 0)
       {
         int region_begin = i;
         int region_end;
         bool broke = false;
-        for (j = region_begin+1; j < ranges.size(); j++)
+        for (j = region_begin+1; j < static_cast<int>(ranges.size()); j++)
         {
           if (ranges[j] == 0)
             continue;
@@ -1298,7 +1298,7 @@ class DatasetUtils
           }
         }
 
-        if (j == ranges.size() && !broke)
+        if (j == static_cast<int>(ranges.size()) && !broke)
           region_end = j-1;
 
         std::vector<int> region;
@@ -1320,7 +1320,7 @@ class DatasetUtils
 
       regions[i].clear();
 
-      for (unsigned int j = begin; j <= end; j++)
+      for (int j = begin; j <= end; j++)
         regions[i].push_back(j);
     }
 
@@ -1333,9 +1333,9 @@ class DatasetUtils
     int numel_last_region = regions[num_regions-1].size();
 
     if (regions[0][0] == 0 &&
-      regions[num_regions-1][numel_last_region-1] == ranges.size()-1)
+      regions[num_regions-1][numel_last_region-1] == static_cast<int>(ranges.size())-1)
     {
-      for (int i = 0; i < regions[0].size(); i++)
+      for (std::size_t i = 0; i < regions[0].size(); i++)
         regions[num_regions-1].push_back(regions[0][i]);
 
       regions.erase(regions.begin(), regions.begin()+1);
@@ -1361,7 +1361,7 @@ class DatasetUtils
       if (interp_begin < 0)
         interp_begin = ranges.size()-1;
 
-      if (interp_end >= ranges.size())
+      if (interp_end >= static_cast<int>(ranges.size()))
         interp_end = 0;
 
       double range_a = ranges[interp_begin];
@@ -1400,7 +1400,7 @@ class DatasetUtils
     size_t len = 0;
 
     unsigned int line_number = 0;
-    long int num_scans = 0;
+    [[maybe_unused]] long int num_scans = 0;
     long int num_rays = 0;
     while ((getline(&line, &len, fp)) != -1 && line_number < 1)
     {
@@ -1481,12 +1481,12 @@ class DatasetUtils
 
     readDataset(dataset_filepath, &ranges, &poses);
 
-    for (int s = 0; s < ranges.size(); s++)
+    for (std::size_t s = 0; s < ranges.size(); s++)
     {
       printf("NEW SCAN\n");
-      for (int r = 0; r < ranges[s].size(); r++)
+      for (std::size_t r = 0; r < ranges[s].size(); r++)
       {
-        printf("r[%d] = %f\n", r, ranges[s][r]);
+        printf("r[%zu] = %f\n", r, ranges[s][r]);
       }
 
       printf("FROM POSE (%f,%f,%f)\n",
@@ -1523,7 +1523,7 @@ class Dump
       file << "rx = [];" << std::endl;
       file << "ry = [];" << std::endl;
 
-      for (int i = 0; i < real_scan.size(); i++)
+      for (std::size_t i = 0; i < real_scan.size(); i++)
       {
         file << "rx = [rx " << real_scan_points[i].first << "];" << std::endl;
         file << "ry = [ry " << real_scan_points[i].second << "];" << std::endl;
@@ -1531,7 +1531,7 @@ class Dump
 
       file << "vx = [];" << std::endl;
       file << "vy = [];" << std::endl;
-      for (int i = 0; i < virtual_scan.size(); i++)
+      for (std::size_t i = 0; i < virtual_scan.size(); i++)
       {
         file << "vx = [vx " << virtual_scan_points[i].first << "];" << std::endl;
         file << "vy = [vy " << virtual_scan_points[i].second << "];" << std::endl;
@@ -1560,19 +1560,19 @@ class Dump
     if (file.is_open())
     {
       file << "rr = [];" << std::endl;
-      for (int i = 0; i < real_scan.size(); i++)
+      for (std::size_t i = 0; i < real_scan.size(); i++)
         file << "rr = [rr " << real_scan[i] << "];" << std::endl;
 
       file << "rt = [];" << std::endl;
-      for (int i = 0; i < real_scan.size(); i++)
+      for (std::size_t i = 0; i < real_scan.size(); i++)
         file << "rt = [rt " << i * 2 * M_PI / real_scan.size() << "];" << std::endl;
 
       file << "vr = [];" << std::endl;
-      for (int i = 0; i < virtual_scan.size(); i++)
+      for (std::size_t i = 0; i < virtual_scan.size(); i++)
         file << "vr = [vr " << virtual_scan[i] << "];" << std::endl;
 
       file << "vt = [];" << std::endl;
-      for (int i = 0; i < virtual_scan.size(); i++)
+      for (std::size_t i = 0; i < virtual_scan.size(); i++)
         file << "vt = [vt " << i * 2 * M_PI / virtual_scan.size() << "];" << std::endl;
 
       file.close();
@@ -1592,7 +1592,7 @@ class Dump
     {
       file << "mx = [];" << std::endl;
       file << "my = [];" << std::endl;
-      for (int i = 0; i < map.size(); i++)
+      for (std::size_t i = 0; i < map.size(); i++)
       {
         file << "mx = [mx " << map[i].first << "];" << std::endl;
         file << "my = [my " << map[i].second << "];" << std::endl;
@@ -1608,7 +1608,7 @@ class Dump
   */
   static void points(const std::vector< std::pair<double,double> >& real_points,
     const std::vector< std::pair<double,double> >& virtual_points,
-    const unsigned int& id,
+    [[maybe_unused]] const unsigned int& id,
     const std::string& dump_filepath)
   {
     std::ofstream file(dump_filepath.c_str(), std::ios::trunc);
@@ -1617,7 +1617,7 @@ class Dump
     {
       file << "rx = [];" << std::endl;
       file << "ry = [];" << std::endl;
-      for (int i = 0; i < real_points.size(); i++)
+      for (std::size_t i = 0; i < real_points.size(); i++)
       {
         file << "rx = [rx " << real_points[i].first << "];" << std::endl;
         file << "ry = [ry " << real_points[i].second << "];" << std::endl;
@@ -1625,7 +1625,7 @@ class Dump
 
       file << "vx = [];" << std::endl;
       file << "vy = [];" << std::endl;
-      for (int i = 0; i < virtual_points.size(); i++)
+      for (std::size_t i = 0; i < virtual_points.size(); i++)
       {
         file << "vx = [vx " << virtual_points[i].first << "];" << std::endl;
         file << "vy = [vy " << virtual_points[i].second << "];" << std::endl;
@@ -1710,7 +1710,7 @@ class Dump
       file << "h_rx = [];" << std::endl;
       file << "h_ry = [];" << std::endl;
 
-      for (int i = 0; i < real_hull.size(); i++)
+      for (std::size_t i = 0; i < real_hull.size(); i++)
       {
         file << "h_rx = [h_rx " << real_hull[i].x() << "];" << std::endl;
         file << "h_ry = [h_ry " << real_hull[i].y() << "];" << std::endl;
@@ -1719,7 +1719,7 @@ class Dump
       file << "h_vx = [];" << std::endl;
       file << "h_vy = [];" << std::endl;
 
-      for (int i = 0; i < virtual_hull.size(); i++)
+      for (std::size_t i = 0; i < virtual_hull.size(); i++)
       {
         file << "h_vx = [h_vx " << virtual_hull[i].x() << "];" << std::endl;
         file << "h_vy = [h_vy " << virtual_hull[i].y() << "];" << std::endl;
@@ -1804,7 +1804,7 @@ class ScanCompletion
   {
     std::vector<double> scan_copy = *scan;
 
-    for (int i = 1; i < scan_copy.size()-1; i++)
+    for (std::size_t i = 1; i < scan_copy.size()-1; i++)
       scan->push_back(scan_copy[i]);
 
     /* Rotate so that it starts from -M_PI rather than -M_PI / 2 */
@@ -1821,12 +1821,12 @@ class ScanCompletion
   {
     /* Find closest and furthest points in original scan */
     double min_range = *std::min_element(scan->begin(), scan->end());
-    double max_range = *std::max_element(scan->begin(), scan->end());
+    [[maybe_unused]] double max_range = *std::max_element(scan->begin(), scan->end());
     double fill_range = min_range;
 
     unsigned int scan_size = scan->size();
 
-    for (int i = 1; i < scan_size-1; i++)
+    for (std::size_t i = 1; i < scan_size-1; i++)
       scan->push_back(fill_range);
 
     /* Rotate so that it starts from -M_PI rather than -M_PI / 2 */
@@ -2026,7 +2026,7 @@ class DFTUtils
 #endif
 
     std::vector< std::pair<double, double> > fft_coeff_pairs;
-    for (int i = 0; i <= coeffs.size()/2; i++)
+    for (std::size_t i = 0; i <= coeffs.size()/2; i++)
     {
       if (i == 0 || i == coeffs.size()/2)
         fft_coeff_pairs.push_back(std::make_pair(coeffs[i], 0.0));
@@ -2501,7 +2501,7 @@ class Translation
     const std::tuple<double,double,double>& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const int& max_iterations,
-    const double& dist_bound,
+    [[maybe_unused]] const double& dist_bound,
     const bool& pick_min,
     const fftw_plan& r2rp,
     int* result_iterations,
@@ -2536,7 +2536,7 @@ class Translation
     std::vector<double> d_v;
     double sum_d_v = 1.0 / real_scan.size();
 
-    for (it = 1; it <= max_iterations; it++)
+    for (it = 1; it <= static_cast<unsigned int>(max_iterations); it++)
     {
       /* Measure the time to find intersections */
       std::chrono::high_resolution_clock::time_point int_start =
@@ -2586,8 +2586,8 @@ class Translation
       std::get<0>(current_pose) += x_e;
       std::get<1>(current_pose) += y_e;
 
-      double dx = std::get<0>(current_pose) - std::get<0>(virtual_pose);
-      double dy = std::get<1>(current_pose) - std::get<1>(virtual_pose);
+      [[maybe_unused]] double dx = std::get<0>(current_pose) - std::get<0>(virtual_pose);
+      [[maybe_unused]] double dy = std::get<1>(current_pose) - std::get<1>(virtual_pose);
 
       /* Check constraints */
       if(!Utils::isPositionInMap(current_pose, map))
@@ -2831,7 +2831,7 @@ public:
      */
     std::vector< std::vector< double> > virtual_scans(num_virtual_scans);
 
-    for (int i = 0; i < virtual_scan_fine.size(); i++)
+    for (std::size_t i = 0; i < virtual_scan_fine.size(); i++)
     {
       unsigned int k = fmod(i,num_virtual_scans);
       virtual_scans[k].push_back(virtual_scan_fine[i]);
@@ -2999,7 +2999,7 @@ public:
       Utils::innerProductComplex(fft_real_coeffs_conj, fft_virtual_coeffs);
 
     /* The denominator of Q_0 */
-    double denominator =
+    [[maybe_unused]] double denominator =
       Utils::norm2(fft_real_coeffs) * Utils::norm2(fft_virtual_coeffs);
 
     /*
@@ -3097,7 +3097,7 @@ public:
      */
     std::vector< std::vector< double> > virtual_scans(num_virtual_scans);
 
-    for (int i = 0; i < virtual_scan_fine.size(); i++)
+    for (std::size_t i = 0; i < virtual_scan_fine.size(); i++)
     {
       unsigned int k = fmod(i,num_virtual_scans);
       virtual_scans[k].push_back(virtual_scan_fine[i]);
@@ -3355,7 +3355,7 @@ public:
     assert (snr.size() == fahm.size());
     assert (fahm.size() == pd.size());
     assert (pd_threshold >= 0);
-    assert (method >= 0 && method <= 3);
+    assert (method <= 3);
 
     /*
      * Return the indices of those angles for which criteria are near
@@ -3370,7 +3370,7 @@ public:
       std::vector<double> criteria = pd;
 
       /* Identify maximum criterion */
-      double max_c = *std::max_element(criteria.begin(), criteria.end());
+      [[maybe_unused]] double max_c = *std::max_element(criteria.begin(), criteria.end());
 
       best_ids.push_back(
         std::max_element(criteria.begin(), criteria.end()) -criteria.begin());
@@ -3420,7 +3420,7 @@ public:
       /* Identify maximum criterion */
       int max_c_idx =
         std::max_element(criteria.begin(), criteria.end()) - criteria.begin();
-      double max_c = criteria[max_c_idx];
+      [[maybe_unused]] double max_c = criteria[max_c_idx];
 
 #if defined (DEBUG)
       printf("best id = %d\n", max_c_idx);
@@ -3448,10 +3448,10 @@ public:
         while(k < 0)
           k += criteria.size();
 
-        while (k > criteria.size())
+        while (k > static_cast<int>(criteria.size()))
           k -= criteria.size();
 
-        if (k == criteria.size())
+        if (k == static_cast<int>(criteria.size()))
           k = 0;
 
 #if defined (DEBUG)
@@ -3579,7 +3579,7 @@ class Match
     double best_min_tc = 100000.0;
 
     /* A lock for going overdrive when the rotation criterion is near-excellent */
-    bool up_lock = false;
+    [[maybe_unused]] bool up_lock = false;
     int total_iterations = 0;
     int num_iterations = 0;
 
@@ -3705,7 +3705,7 @@ class Match
         (current_magnification_size+1)*ip.num_iterations;
 
       int tr_iterations = -1;
-      double int_time_trans = 0.0;
+      [[maybe_unused]] double int_time_trans = 0.0;
 
 #if (defined TIMES) || (defined LOGS)
       std::chrono::high_resolution_clock::time_point start_translation =
