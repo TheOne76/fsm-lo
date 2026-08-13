@@ -1962,6 +1962,30 @@ class ScanCompletion
 
 
 /* ========================================================================== */
+/*
+ * The transforms below cannot take their working buffers from a vector or from
+ * new: FFTW's planner records the alignment of the arrays it was shown, and a
+ * plan may only be executed on arrays aligned the same way, which is what
+ * fftw_malloc guarantees and nothing else does.
+ *
+ * Every one of those buffers followed the same shape, allocate then fill then
+ * execute then free, with the free written out by hand at the end of the
+ * function. This gives them an owner instead.
+ */
+struct FFTWDeleter
+{
+  void operator()(void* const memory) const { fftw_free(memory); }
+};
+
+template <typename T>
+using FFTWBuffer = std::unique_ptr<T[], FFTWDeleter>;
+
+template <typename T>
+FFTWBuffer<T> fftwBuffer(const std::size_t count)
+{
+  return FFTWBuffer<T>(static_cast<T*>(fftw_malloc(count * sizeof(T))));
+}
+/* ========================================================================== */
 class DFTUtils
 {
   public:
@@ -1986,12 +2010,10 @@ class DFTUtils
     if (found != plans.end())
       return found->second;
 
-    double* in = (double*) fftw_malloc(size * sizeof(double));
-    double* out = (double*) fftw_malloc(size * sizeof(double));
-    const fftw_plan plan = fftw_plan_r2r_1d(size, in, out, FFTW_R2HC,
-      FSM_LO_FFTW_PLAN_FLAG);
-    fftw_free(in);
-    fftw_free(out);
+    const FFTWBuffer<double> in = fftwBuffer<double>(size);
+    const FFTWBuffer<double> out = fftwBuffer<double>(size);
+    const fftw_plan plan = fftw_plan_r2r_1d(size, in.get(), out.get(),
+      FFTW_R2HC, FSM_LO_FFTW_PLAN_FLAG);
 
     plans.emplace(size, plan);
     return plan;
@@ -2010,13 +2032,10 @@ class DFTUtils
     if (found != plans.end())
       return found->second;
 
-    fftw_complex* in =
-      (fftw_complex*) fftw_malloc(size * sizeof(fftw_complex));
-    double* out = (double*) fftw_malloc(size * sizeof(double));
+    const FFTWBuffer<fftw_complex> in = fftwBuffer<fftw_complex>(size);
+    const FFTWBuffer<double> out = fftwBuffer<double>(size);
     const fftw_plan plan =
-      fftw_plan_dft_c2r_1d(size, in, out, FSM_LO_FFTW_PLAN_FLAG);
-    fftw_free(in);
-    fftw_free(out);
+      fftw_plan_dft_c2r_1d(size, in.get(), out.get(), FSM_LO_FFTW_PLAN_FLAG);
 
     plans.emplace(size, plan);
     return plan;
@@ -2216,13 +2235,10 @@ class DFTUtils
       std::chrono::high_resolution_clock::now();
 #endif
 
-    double* in;
-    double* out;
-
     const size_t num_rays = rays_diff.size();
 
-    in = (double*) fftw_malloc(num_rays * sizeof(double));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<double> in = fftwBuffer<double>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     const fftw_plan p = forwardPlan(num_rays);
 
@@ -2231,16 +2247,12 @@ class DFTUtils
       in[i] = rays_diff[i];
 
     /* Execute plan */
-    fftw_execute_r2r(p, in, out);
+    fftw_execute_r2r(p, in.get(), out.get());
 
     /* Store all DFT coefficients */
     std::vector<double> dft_coeff_vector;
     for (unsigned int i = 0; i < num_rays; i++)
       dft_coeff_vector.push_back(out[i]);
-
-    /* Free memory */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2265,13 +2277,10 @@ class DFTUtils
       std::chrono::high_resolution_clock::now();
 #endif
 
-    double* in;
-    double* out;
-
     const size_t num_rays = rays_diff.size();
 
-    in = (double*) fftw_malloc(num_rays * sizeof(double));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<double> in = fftwBuffer<double>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     /*
      * Create plan
@@ -2284,19 +2293,12 @@ class DFTUtils
 
 
     /* Execute plan */
-    fftw_execute_r2r(r2rp, in, out);
+    fftw_execute_r2r(r2rp, in.get(), out.get());
 
     /* Store all DFT coefficients */
     std::vector<double> dft_coeff_vector;
     for (unsigned int i = 0; i < num_rays; i++)
       dft_coeff_vector.push_back(out[i]);
-
-    /*
-     * Free memory
-     * fftw_destroy_plan(p);
-     */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2327,13 +2329,10 @@ class DFTUtils
     std::vector< std::vector<double> > coeff_vector_v;
 
     /* Input/output arrays for fftw */
-    double* in;
-    double* out;
-
     const size_t num_rays = scans[0].size();
 
-    in = (double*) fftw_malloc(num_rays * sizeof(double));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<double> in = fftwBuffer<double>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     /* Create plan once */
     const fftw_plan p = forwardPlan(num_rays);
@@ -2345,7 +2344,7 @@ class DFTUtils
         in[i] = scans[v][i];
 
       /* Execute plan with new input/output arrays */
-      fftw_execute_r2r(p, in, out);
+      fftw_execute_r2r(p, in.get(), out.get());
 
       /* Store all DFT coefficients for the v-th scan */
       std::vector<double> dft_coeffs;
@@ -2354,10 +2353,6 @@ class DFTUtils
 
       coeff_vector_v.push_back(dft_coeffs);
     }
-
-    /* Free memory */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2389,13 +2384,10 @@ class DFTUtils
     std::vector< std::vector<double> > coeff_vector_v;
 
     /* Input/output arrays for fftw */
-    double* in;
-    double* out;
-
     const size_t num_rays = scans[0].size();
 
-    in = (double*) fftw_malloc(num_rays * sizeof(double));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<double> in = fftwBuffer<double>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     /*
      * Create plan once
@@ -2409,7 +2401,7 @@ class DFTUtils
         in[i] = scans[v][i];
 
       /* Execute plan with new input/output arrays */
-      fftw_execute_r2r(r2rp, in, out);
+      fftw_execute_r2r(r2rp, in.get(), out.get());
 
       /* Store all DFT coefficients for the v-th scan */
       std::vector<double> dft_coeffs;
@@ -2418,13 +2410,6 @@ class DFTUtils
 
       coeff_vector_v.push_back(dft_coeffs);
     }
-
-    /*
-     * Free memory
-     * fftw_destroy_plan(p);
-     */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2449,13 +2434,10 @@ class DFTUtils
       std::chrono::high_resolution_clock::now();
 #endif
 
-    fftw_complex* in;
-    double* out;
-
     const size_t num_rays = rays_diff.size();
 
-    in = (fftw_complex*) fftw_malloc(num_rays * sizeof(fftw_complex));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<fftw_complex> in = fftwBuffer<fftw_complex>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     const fftw_plan p = inversePlan(num_rays);
 
@@ -2467,16 +2449,12 @@ class DFTUtils
     }
 
     /* Execute plan */
-    fftw_execute_dft_c2r(p, in, out);
+    fftw_execute_dft_c2r(p, in.get(), out.get());
 
     /* Store all DFT coefficients */
     std::vector<double> dft_coeff_vector;
     for (unsigned int i = 0; i < num_rays; i++)
       dft_coeff_vector.push_back(out[i]/num_rays);
-
-    /* Free memory */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2506,13 +2484,10 @@ class DFTUtils
     /* What will be returned */
     std::vector< std::vector<double> > dft_coeffs_v;
 
-    fftw_complex* in;
-    double* out;
-
     const size_t num_rays = scans[0].size();
 
-    in = (fftw_complex*) fftw_malloc(num_rays * sizeof(fftw_complex));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<fftw_complex> in = fftwBuffer<fftw_complex>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     /* Create plan once */
     const fftw_plan p = inversePlan(num_rays);
@@ -2528,7 +2503,7 @@ class DFTUtils
       }
 
       /* Execute plan */
-      fftw_execute_dft_c2r(p, in, out);
+      fftw_execute_dft_c2r(p, in.get(), out.get());
 
       /* Store all DFT coefficients */
       std::vector<double> dft_coeffs;
@@ -2537,10 +2512,6 @@ class DFTUtils
 
       dft_coeffs_v.push_back(dft_coeffs);
     }
-
-    /* Free memory */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2571,13 +2542,10 @@ class DFTUtils
     /* What will be returned */
     std::vector< std::vector<double> > dft_coeffs_v;
 
-    fftw_complex* in;
-    double* out;
-
     const size_t num_rays = scans[0].size();
 
-    in = (fftw_complex*) fftw_malloc(num_rays * sizeof(fftw_complex));
-    out = (double*) fftw_malloc(num_rays * sizeof(double));
+    const FFTWBuffer<fftw_complex> in = fftwBuffer<fftw_complex>(num_rays);
+    const FFTWBuffer<double> out = fftwBuffer<double>(num_rays);
 
     /*
      * Create plan once
@@ -2594,7 +2562,7 @@ class DFTUtils
       }
 
       /* Execute plan */
-      fftw_execute_dft_c2r(c2rp, in, out);
+      fftw_execute_dft_c2r(c2rp, in.get(), out.get());
 
       /* Store all DFT coefficients */
       std::vector<double> dft_coeffs;
@@ -2603,13 +2571,6 @@ class DFTUtils
 
       dft_coeffs_v.push_back(dft_coeffs);
     }
-
-    /*
-     * Free memory
-     * fftw_destroy_plan(p);
-     */
-    fftw_free(out);
-    fftw_free(in);
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
