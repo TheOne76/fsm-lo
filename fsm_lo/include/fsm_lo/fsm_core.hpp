@@ -34,6 +34,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <numeric>
 #include <random>
@@ -101,6 +102,111 @@ struct ScanDifference
   std::vector<double> diff_true;
 };
 /* ========================================================================== */
+/*
+ * The inverse transform of the cross power spectrum of two scans, together
+ * with the index of its peak. The peak is where the two scans line up, so its
+ * index is what the orientation is read from.
+ */
+struct Correlation
+{
+  std::vector<double> q_0;
+  unsigned int q_0_max_id{0};
+};
+/* ========================================================================== */
+/*
+ * Matching one scan against one virtual scan: the orientation it gives, and
+ * the three quantities by which that orientation is judged against the others.
+ */
+struct FMTOutput
+{
+  double angle{0.0};
+  double snr{0.0};
+  double fahm{0.0};
+  double pd{0.0};
+};
+/* ========================================================================== */
+/*
+ * What the rotation stage returns: the candidate orientations that survived
+ * ranking and, one per candidate, the two criteria by which the caller picks
+ * between them. The time spent finding ray intersections is reported alongside
+ * because the caller accumulates it across both stages.
+ */
+struct RotationOutput
+{
+  std::vector<double> angles;
+  std::vector<double> rc0;
+  std::vector<double> rc1;
+  std::chrono::duration<double> intersections_time{};
+};
+/* ========================================================================== */
+/*
+ * What one pass of the translation stage returns: the criterion by which the
+ * caller judges the correction, the pose it settled on, how many iterations it
+ * took, and the time spent finding ray intersections, which the caller
+ * accumulates across both stages.
+ */
+struct TranslationOutput
+{
+  double criterion{0.0};
+  Pose pose;
+  int iterations{0};
+  std::chrono::duration<double> intersections_time{};
+};
+/* ========================================================================== */
+/*
+ * One correction step: the x-wise and y-wise error, the per ray differences
+ * that produced them, and the norm of the first transform coefficient.
+ */
+struct TranslationCorrection
+{
+  double x_e{0.0};
+  double y_e{0.0};
+  std::vector<double> d_v;
+  double norm_x1{0.0};
+};
+/* ========================================================================== */
+/*
+ * Where one ray met the polygon, and the index of the segment it met. The
+ * index is what the next ray starts its own search from, a scan being
+ * continuous.
+ */
+struct RayHit
+{
+  std::pair<double,double> intersection_point;
+  int start_segment_id{0};
+};
+/* ========================================================================== */
+/*
+ * One scan of a recorded dataset: the ranges and the pose they were taken
+ * from.
+ */
+struct DatasetScan
+{
+  std::vector<double> ranges;
+  Pose pose;
+};
+/* ========================================================================== */
+/*
+ * A whole recorded dataset: every scan's ranges, and the pose each was taken
+ * from, in the same order.
+ */
+struct Dataset
+{
+  std::vector< std::vector<double> > ranges;
+  std::vector< Pose > poses;
+};
+/* ========================================================================== */
+/*
+ * A scan completed against a map: the completed ranges, the map they were
+ * measured against, and the pose the map is expressed from.
+ */
+struct CompletedScan
+{
+  std::vector<double> scan;
+  std::vector< std::pair<double,double> > map;
+  Pose map_origin;
+};
+/* ========================================================================== */
 struct input_params
 {
   unsigned int num_iterations;
@@ -145,6 +251,16 @@ struct output_params
     rc = 0;
     tc = 0;
   };
+};
+/* ========================================================================== */
+/*
+ * What a match returns: the pose increment between the two scans, and the
+ * report on how it was arrived at.
+ */
+struct MatchOutput
+{
+  Pose pose;
+  output_params op;
 };
 /* ========================================================================== */
 class X
@@ -383,12 +499,18 @@ class X
 
       while (!success && widenings < max_widenings)
       {
-        success = findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
-          start0, end0, tan_peligro,
-          &intersection_point, &segment_id);
+        const std::optional<RayHit> hit =
+          findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
+            start0, end0, tan_peligro);
+
+        success = hit.has_value();
 
         if (success)
+        {
+          intersection_point = hit->intersection_point;
+          segment_id = hit->start_segment_id;
           start0 = segment_id;
+        }
         else
           start0 += inc;
 
@@ -402,12 +524,16 @@ class X
         start0 = 0;
         end0 = static_cast<int>(lines.size());
 
-        success = findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
-          start0, end0, tan_peligro,
-          &intersection_point, &segment_id);
+        const std::optional<RayHit> hit =
+          findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
+            start0, end0, tan_peligro);
+
+        success = hit.has_value();
 
         if (success)
         {
+          intersection_point = hit->intersection_point;
+          segment_id = hit->start_segment_id;
           start0 = segment_id;
           end0 = start0 + inc;
         }
@@ -447,14 +573,12 @@ class X
 
   /*****************************************************************************
    */
-  static bool findExactOneRay(
+  static std::optional<RayHit> findExactOneRay(
     const double& px, const double& py, const double& tan_t_ray,
     const double& x_far, const double& y_far,
     const std::vector< std::pair<double, double> >& lines,
     const int& start_search_id, const int& end_search_id,
-    const bool& tan_peligro,
-    std::pair<double,double>* intersection_point,
-    int* start_segment_id)
+    const bool& tan_peligro)
   {
     std::vector< std::pair<double,double> > candidate_points;
     std::vector<int> candidate_start_segment_ids;
@@ -558,14 +682,12 @@ class X
 
     if (idx >= 0)
     {
-      *intersection_point =
-        std::make_pair(candidate_points[idx].first, candidate_points[idx].second);
-      *start_segment_id = candidate_start_segment_ids[idx];
-
-      return true;
+      return RayHit{
+        std::make_pair(candidate_points[idx].first, candidate_points[idx].second),
+        candidate_start_segment_ids[idx]};
     }
     else
-      return false;
+      return std::nullopt;
   }
 };
 
@@ -688,10 +810,9 @@ class Utils
 
   /*****************************************************************************
   */
-  static void generatePose(
+  static Pose generatePose(
     const Pose& real_pose,
-    const double& dxy, const double& dt,
-    Pose* virtual_pose)
+    const double& dxy, const double& dt)
   {
     assert(dxy >= 0);
     assert(dt >= 0);
@@ -710,20 +831,22 @@ class Utils
     double ry = distribution_y(generator_y);
     double rt = distribution_t(generator_t);
 
-    virtual_pose->x = real_pose.x + rx;
-    virtual_pose->y = real_pose.y + ry;
-    virtual_pose->t = real_pose.t + rt;
+    Pose virtual_pose;
+    virtual_pose.x = real_pose.x + rx;
+    virtual_pose.y = real_pose.y + ry;
+    virtual_pose.t = real_pose.t + rt;
 
-    virtual_pose->t = wrapAngle(virtual_pose->t);
+    virtual_pose.t = wrapAngle(virtual_pose.t);
+
+    return virtual_pose;
   }
 
   /*****************************************************************************
   */
-  static bool generatePose(
+  static std::optional<Pose> generatePose(
     const Pose& base_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& dxy, const double& dt, const double& dist_threshold,
-    Pose* real_pose,
     const unsigned int seed = 0)
   {
     assert(dxy >= 0.0);
@@ -776,8 +899,6 @@ class Utils
       else pose_found = false;
     }
 
-    *real_pose = real_pose_ass;
-
     /* Verify distance threshold */
     std::vector< std::pair<double,double> > intersections =
       X::find(real_pose_ass, map, map.size());
@@ -787,15 +908,17 @@ class Utils
     unsigned int min_dist_idx =
       std::min_element(real_scan.begin(), real_scan.end()) - real_scan.begin();
 
-    return real_scan[min_dist_idx] > dist_threshold;
+    if (real_scan[min_dist_idx] > dist_threshold)
+      return real_pose_ass;
+
+    return std::nullopt;
   }
 
   /*****************************************************************************
   */
-  static bool generatePoseWithinMap(
+  static std::optional<Pose> generatePoseWithinMap(
     const std::vector< std::pair<double,double> >& map,
-    const double& dist_threshold,
-    Pose* pose)
+    const double& dist_threshold)
   {
     /* A temp real pose */
     Pose real_pose_ass;
@@ -869,8 +992,6 @@ class Utils
       else pose_found = false;
     }
 
-    *pose = real_pose_ass;
-
     /* Verify distance threshold */
     std::vector< std::pair<double,double> > intersections =
       X::find(real_pose_ass, map, map.size());
@@ -880,7 +1001,10 @@ class Utils
     unsigned int min_dist_idx =
       std::min_element(real_scan.begin(), real_scan.end()) - real_scan.begin();
 
-    return real_scan[min_dist_idx] > dist_threshold;
+    if (real_scan[min_dist_idx] > dist_threshold)
+      return real_pose_ass;
+
+    return std::nullopt;
   }
 
   /*****************************************************************************
@@ -1230,10 +1354,7 @@ class DatasetUtils
   static std::vector< std::vector< std::pair<double,double> > >
     dataset2points(const char* dataset_filepath)
     {
-      std::vector< std::vector<double> > ranges;
-      std::vector< Pose > poses;
-
-      readDataset(dataset_filepath, &ranges, &poses);
+      const auto [ranges, poses] = readDataset(dataset_filepath);
 
       [[maybe_unused]] int num_scans = ranges.size();
       int num_rays = ranges[0].size();
@@ -1266,21 +1387,17 @@ class DatasetUtils
 
   /*****************************************************************************
   */
-  static void dataset2rangesAndPose(
-    const char* dataset_filepath,
-    std::vector<double>* ranges,
-    Pose* pose)
+  static DatasetScan dataset2rangesAndPose(const char* dataset_filepath)
   {
-    readDataset(dataset_filepath, ranges, pose);
+    return readDatasetScan(dataset_filepath);
   }
 
   /*****************************************************************************
   */
-  static void readDataset(
-    const char* filepath,
-    std::vector<double>* ranges,
-    Pose* pose)
+  static DatasetScan readDatasetScan(const char* filepath)
   {
+    DatasetScan scan;
+
     /*
      * First read the first two number: they show
      * (1) the number of scans and
@@ -1340,7 +1457,7 @@ class DatasetUtils
         double py = std::stod(pose_d,&sz);
         double pt = std::stod(pose_d.substr(sz));
         pt = Utils::wrapAngle(pt);
-        *pose = Pose{px,py,pt};
+        scan.pose = Pose{px,py,pt};
 
         continue;
       }
@@ -1348,13 +1465,15 @@ class DatasetUtils
       /* At this point we are in a line holding a range measurement; fo sho */
       double range_d;
       assert(sscanf(line, "%lf", &range_d) == 1);
-      ranges->push_back(range_d);
+      scan.ranges.push_back(range_d);
     }
 
     fclose(fp);
 
     if (line)
       free(line);
+
+    return scan;
   }
 
   /*****************************************************************************
@@ -1477,11 +1596,10 @@ class DatasetUtils
 
   /*****************************************************************************
   */
-  static void readDataset(
-    const char* filepath,
-    std::vector< std::vector<double> >* ranges,
-    std::vector< Pose >* poses)
+  static Dataset readDataset(const char* filepath)
   {
+    Dataset dataset;
+
     /*
      * First read the first two number: they show
      * (1) the number of scans and
@@ -1536,7 +1654,7 @@ class DatasetUtils
       if ((line_number-1) % (num_rays+1) == 0)
       {
         /* Finished with this scan */
-        ranges->push_back(ranges_one_scan);
+        dataset.ranges.push_back(ranges_one_scan);
 
         /* Clear the vector so we can begin all over */
         ranges_one_scan.clear();
@@ -1550,7 +1668,7 @@ class DatasetUtils
         double py = std::stod(pose,&sz);
         double pt = std::stod(pose.substr(sz));
         pt = Utils::wrapAngle(pt);
-        poses->push_back(Pose{px,py,pt});
+        dataset.poses.push_back(Pose{px,py,pt});
 
         continue;
       }
@@ -1565,16 +1683,15 @@ class DatasetUtils
 
     if (line)
       free(line);
+
+    return dataset;
   }
 
   /****************************************************************************
   */
   static void printDataset(const char* dataset_filepath)
   {
-    std::vector< std::vector<double> > ranges;
-    std::vector< Pose > poses;
-
-    readDataset(dataset_filepath, &ranges, &poses);
+    const auto [ranges, poses] = readDataset(dataset_filepath);
 
     for (std::size_t s = 0; s < ranges.size(); s++)
     {
@@ -1835,7 +1952,7 @@ class ScanCompletion
 
   /*****************************************************************************
   */
-  static void completeScan(std::vector<double>* scan, const int& method)
+  static void completeScan(std::vector<double>& scan, const int& method)
   {
     if (method == 1)
       completeScan1(scan);
@@ -1849,27 +1966,27 @@ class ScanCompletion
 
   /*****************************************************************************
   */
-  static void completeScan1(std::vector<double>* scan)
+  static void completeScan1(std::vector<double>& scan)
   {
-    std::vector<double> scan_copy = *scan;
+    std::vector<double> scan_copy = scan;
 
     for (int i = scan_copy.size()-2; i > 0; i--)
-      scan->push_back(scan_copy[i]);
+      scan.push_back(scan_copy[i]);
 
     /* Rotate so that it starts from -M_PI rather than -M_PI / 2 */
-    int num_pos = scan->size() / 4;
+    int num_pos = scan.size() / 4;
 
-    std::rotate(scan->begin(),
-      scan->begin() + scan->size() - num_pos,
-      scan->end());
+    std::rotate(scan.begin(),
+      scan.begin() + scan.size() - num_pos,
+      scan.end());
   }
 
   /*****************************************************************************
   */
-  static void completeScan2(std::vector<double>* scan,
+  static void completeScan2(std::vector<double>& scan,
     const Pose& pose)
   {
-    std::vector<double> scan_copy = *scan;
+    std::vector<double> scan_copy = scan;
 
     /* Locate the first and last points of the scan in the 2D plane */
     const std::vector< std::pair<double,double> > points =
@@ -1883,68 +2000,67 @@ class ScanCompletion
     double r = d/2;
 
     for (int i = scan_copy.size()-2; i > 0; i--)
-      scan->push_back(r);
+      scan.push_back(r);
 
     /* Rotate so that it starts from -M_PI rather than -M_PI / 2 */
-    int num_pos = scan->size() / 4;
+    int num_pos = scan.size() / 4;
 
-    std::rotate(scan->begin(),
-      scan->begin() + scan->size() - num_pos,
-      scan->end());
+    std::rotate(scan.begin(),
+      scan.begin() + scan.size() - num_pos,
+      scan.end());
   }
 
   /*****************************************************************************
   */
-  static void completeScan3(std::vector<double>* scan)
+  static void completeScan3(std::vector<double>& scan)
   {
-    std::vector<double> scan_copy = *scan;
+    std::vector<double> scan_copy = scan;
 
     for (std::size_t i = 1; i < scan_copy.size()-1; i++)
-      scan->push_back(scan_copy[i]);
+      scan.push_back(scan_copy[i]);
 
     /* Rotate so that it starts from -M_PI rather than -M_PI / 2 */
-    int num_pos = scan->size() / 4;
+    int num_pos = scan.size() / 4;
 
-    std::rotate(scan->begin(),
-      scan->begin() + scan->size() - num_pos,
-      scan->end());
+    std::rotate(scan.begin(),
+      scan.begin() + scan.size() - num_pos,
+      scan.end());
   }
 
   /*****************************************************************************
   */
-  static void completeScan4(std::vector<double>* scan)
+  static void completeScan4(std::vector<double>& scan)
   {
     /* Find closest and furthest points in original scan */
-    double min_range = *std::min_element(scan->begin(), scan->end());
-    [[maybe_unused]] double max_range = *std::max_element(scan->begin(), scan->end());
+    double min_range = *std::min_element(scan.begin(), scan.end());
+    [[maybe_unused]] double max_range = *std::max_element(scan.begin(), scan.end());
     double fill_range = min_range;
 
-    unsigned int scan_size = scan->size();
+    unsigned int scan_size = scan.size();
 
     for (std::size_t i = 1; i < scan_size-1; i++)
-      scan->push_back(fill_range);
+      scan.push_back(fill_range);
 
     /* Rotate so that it starts from -M_PI rather than -M_PI / 2 */
-    assert(fmod(scan->size(), 2) == 0);
-    int num_pos = scan->size() / 4;
+    assert(fmod(scan.size(), 2) == 0);
+    int num_pos = scan.size() / 4;
 
-    std::rotate(scan->begin(),
-      scan->begin() + scan->size() - num_pos,
-      scan->end());
+    std::rotate(scan.begin(),
+      scan.begin() + scan.size() - num_pos,
+      scan.end());
   }
 
   /*****************************************************************************
   */
-  static void completeScan5(
+  static CompletedScan completeScan5(
     const Pose& pose,
     const std::vector<double>& scan_in,
-    const unsigned int& num_rays,
-    std::vector<double>* scan_out,
-    std::vector< std::pair<double,double> >* map,
-    Pose* map_origin)
+    const unsigned int& num_rays)
   {
     const std::vector< std::pair<double,double> > scan_points =
       Utils::scan2points(scan_in, pose, M_PI);
+
+    CompletedScan completed;
 
     Pose pose_within_points = pose;
 
@@ -1953,18 +2069,20 @@ class ScanCompletion
 
     while (!is_farther_than)
     {
-      do Utils::generatePose(pose,
-        0.05, 0.0, &pose_within_points);
+      do pose_within_points = Utils::generatePose(pose, 0.05, 0.0);
       while(!Utils::isPositionInMap(pose_within_points, scan_points));
 
-      *map = X::find(pose_within_points, scan_points, num_rays);
+      completed.map = X::find(pose_within_points, scan_points, num_rays);
 
       is_farther_than =
-        Utils::isPositionFartherThan(pose_within_points, *map, farther_than);
+        Utils::isPositionFartherThan(pose_within_points, completed.map,
+          farther_than);
     }
 
-    *map_origin = pose_within_points;
-    *scan_out = Utils::points2scan(*map, *map_origin);
+    completed.map_origin = pose_within_points;
+    completed.scan = Utils::points2scan(completed.map, completed.map_origin);
+
+    return completed;
   }
 };
 
@@ -2051,7 +2169,7 @@ class DFTUtils
 
   /*****************************************************************************
   */
-  static void fftshift(std::vector<double>* vec)
+  static void fftshift(std::vector<double>& vec)
   {
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point a =
@@ -2059,9 +2177,9 @@ class DFTUtils
 #endif
 
     std::rotate(
-      vec->begin(),
-      vec->begin() + static_cast<unsigned int>(vec->size()/2),
-      vec->end());
+      vec.begin(),
+      vec.begin() + static_cast<unsigned int>(vec.size()/2),
+      vec.end());
 
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point b =
@@ -2602,17 +2720,14 @@ class Translation
 
   /*****************************************************************************
   */
-  static double tff(
+  static TranslationOutput tff(
     const std::vector< double >& real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const int& max_iterations,
     [[maybe_unused]] const double& dist_bound,
     const bool& pick_min,
-    const fftw_plan& r2rp,
-    int* result_iterations,
-    std::chrono::duration<double>* intersections_time,
-    Pose* result_pose)
+    const fftw_plan& r2rp)
   {
 #ifdef PRINTS
     printf("input pose  (%f,%f,%f) [Translation::tff]\n",
@@ -2620,6 +2735,16 @@ class Translation
       virtual_pose.y,
       virtual_pose.t);
 #endif
+
+    TranslationOutput output;
+
+    /*
+     * The orientation is not the translation stage's to change: it comes back
+     * exactly as it went in. Both callers relied on that by passing the same
+     * object as input and output, so the field was simply left alone. Saying
+     * it plainly costs nothing and removes the aliasing the old shape needed.
+     */
+    output.pose.t = virtual_pose.t;
 
     Pose current_pose = virtual_pose;
 
@@ -2629,8 +2754,6 @@ class Translation
     std::vector<double> sum_d_vs;
     std::vector<double> x_es;
     std::vector<double> y_es;
-    double norm_x1;
-
     /* Start the clock */
     std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
@@ -2657,7 +2780,7 @@ class Translation
 
       std::chrono::high_resolution_clock::time_point int_end =
         std::chrono::high_resolution_clock::now();
-      *intersections_time =
+      output.intersections_time =
         std::chrono::duration_cast< std::chrono::duration<double> >(int_end-int_start);
 
       /* Find the corresponding ranges */
@@ -2675,13 +2798,16 @@ class Translation
       inclusion_bound = real_scan.size()/4*err;
 
       /* Obtain the correction vector */
-      std::pair<double,double> errors_xy =
+      const TranslationCorrection correction =
         tffCore(real_scan, virtual_scan_it, current_pose.t,
-          inclusion_bound, r2rp, &d_v, &norm_x1);
+          inclusion_bound, r2rp);
+
+      d_v = correction.d_v;
+      [[maybe_unused]] const double norm_x1 = correction.norm_x1;
 
       /* These are the corrections */
-      double x_e = errors_xy.first;
-      double y_e = errors_xy.second;
+      double x_e = correction.x_e;
+      double y_e = correction.y_e;
 
 
       /* The norm of the correction vector */
@@ -2702,9 +2828,10 @@ class Translation
         printf("OUT OF BOUNDS\n");
 #endif
 
-        *result_iterations= it;
-        *result_pose = current_pose;
-        return -2.0;
+        output.iterations = it;
+        output.pose = current_pose;
+        output.criterion = -2.0;
+        return output;
       }
 
       /*
@@ -2750,13 +2877,13 @@ class Translation
       double x_tot = std::accumulate(x_es.begin(), x_es.begin()+min_sum_d_idx, 0.0);
       double y_tot = std::accumulate(y_es.begin(), y_es.begin()+min_sum_d_idx, 0.0);
 
-      result_pose->x = x_tot + virtual_pose.x;
-      result_pose->y = y_tot + virtual_pose.y;
+      output.pose.x = x_tot + virtual_pose.x;
+      output.pose.y = y_tot + virtual_pose.y;
     }
     else
-      *result_pose = current_pose;
+      output.pose = current_pose;
 
-    *result_iterations= it;
+    output.iterations = it;
 
     /* Stop the clock */
     std::chrono::high_resolution_clock::time_point end =
@@ -2767,35 +2894,33 @@ class Translation
 
 #ifdef PRINTS
     printf("output pose (%f,%f,%f) [Translation::tff]\n",
-      result_pose->x,
-      result_pose->y,
-      result_pose->t);
+      output.pose.x,
+      output.pose.y,
+      output.pose.t);
 #endif
 
-    return sum_d_v / real_scan.size();
+    output.criterion = sum_d_v / real_scan.size();
+    return output;
   }
 
   /*****************************************************************************
   */
-  static std::pair<double,double> tffCore(
+  static TranslationCorrection tffCore(
     const std::vector< double >& real_scan,
     const std::vector< double >& virtual_scan,
     const double& current_t,
     const double& inclusion_bound,
-    const fftw_plan& r2rp,
-    std::vector<double>* d_v,
-    double* norm_x1)
+    const fftw_plan& r2rp)
   {
     assert(inclusion_bound >= 0);
 
     const auto [diff, diff_true] =
       Utils::diffScansPerRay(real_scan, virtual_scan, inclusion_bound);
-    *d_v = diff_true;
 
     /* X1 */
     std::vector<double> X1 = DFTUtils::getFirstDFTCoefficient(diff, r2rp);
 
-    *norm_x1 = sqrt(X1[0]*X1[0] + X1[1]*X1[1]);
+    const double norm_x1 = sqrt(X1[0]*X1[0] + X1[1]*X1[1]);
 
     /* Find the x-wise and y-wise errors */
     double t = M_PI + current_t;
@@ -2808,7 +2933,7 @@ class Translation
     printf("(x_e,y_e) = (%f,%f)\n", x_e, y_e);
 #endif
 
-    return std::make_pair(x_e,y_e);
+    return TranslationCorrection{x_e, y_e, diff_true, norm_x1};
   }
 
   /*****************************************************************************
@@ -2864,39 +2989,34 @@ public:
 
   /*****************************************************************************
   */
-  static std::vector<double> fmt(
+  static RotationOutput fmt(
     const std::vector< double >& real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
     const std::string& batch_or_sequential,
-    const fftw_plan& r2rp, const fftw_plan& c2rp,
-    std::vector<double>* rc0, std::vector<double>* rc1,
-    std::chrono::duration<double>* intersections_time)
+    const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
     if (batch_or_sequential.compare("batch") == 0)
       return fmt2Batch(real_scan, virtual_pose, map, magnification_size,
-        r2rp, c2rp, rc0, rc1, intersections_time);
+        r2rp, c2rp);
     else if (batch_or_sequential.compare("sequential") == 0)
-      return fmt2Sequential(real_scan, virtual_pose, map, magnification_size,
-        rc0, rc1, intersections_time);
+      return fmt2Sequential(real_scan, virtual_pose, map, magnification_size);
     else
     {
       printf("[Rotation::fmt] Use 'batch' or 'sequential' instead \n");
-      std::vector<double> dv; dv.push_back(-1.0); return dv;
+      RotationOutput output; output.angles.push_back(-1.0); return output;
     }
   }
 
   /***************************************************************************
    * FMT sequential execution functions (slower)
    */
-  static std::vector<double> fmt2Sequential(
+  static RotationOutput fmt2Sequential(
     const std::vector< double >& real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
-    const unsigned int& magnification_size,
-    std::vector<double>* rc0, std::vector<double>* rc1,
-    std::chrono::duration<double>* intersections_time)
+    const unsigned int& magnification_size)
   {
 #if defined (PRINTS)
     printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
@@ -2905,8 +3025,7 @@ public:
       virtual_pose.t);
 #endif
 
-    rc0->clear();
-    rc1->clear();
+    RotationOutput output;
 
     Pose zero_pose;
     zero_pose.x = 0.0;
@@ -2926,7 +3045,7 @@ public:
 
     std::chrono::high_resolution_clock::time_point int_end =
       std::chrono::high_resolution_clock::now();
-    *intersections_time =
+    output.intersections_time =
       std::chrono::duration_cast< std::chrono::duration<double> >(int_end-int_start);
 
     const std::vector<double> virtual_scan_fine =
@@ -2963,12 +3082,8 @@ public:
 
     for (unsigned int a = 0; a < num_virtual_scans; a++)
     {
-      double angle = 0.0;
-      double snr = 0.0;
-      double fahm = 0.0;
-      double pd = 0.0;
-
-      fmt1Sequential(real_scan, virtual_scans[a], &angle, &snr, &fahm, &pd);
+      const auto [angle, snr, fahm, pd] =
+        fmt1Sequential(real_scan, virtual_scans[a]);
 
       double ornt_a = -angle + a*mul*ang_inc;
       ornt_a = Utils::wrapAngle(ornt_a);
@@ -2991,15 +3106,14 @@ public:
     std::vector<unsigned int> optimal_ids =
       rankFMTOutput(snrs, fahms, pds, 3, magnification_size, 0.00001);
 
-    std::vector<double> angles;
     for (unsigned int i = 0; i < optimal_ids.size(); i++)
     {
       double angle = orientations[optimal_ids[i]];
       angle = Utils::wrapAngle(angle);
-      angles.push_back(angle);
+      output.angles.push_back(angle);
 
-      rc0->push_back(pds[optimal_ids[i]]);
-      rc1->push_back(snrs[optimal_ids[i]] / fahms[optimal_ids[i]]);
+      output.rc0.push_back(pds[optimal_ids[i]]);
+      output.rc1.push_back(snrs[optimal_ids[i]] / fahms[optimal_ids[i]]);
     }
 
 #if defined (TIMES)
@@ -3007,34 +3121,32 @@ public:
 #endif
 
 #if defined (PRINTS)
-    for (unsigned int i = 0; i < angles.size(); i++)
+    for (unsigned int i = 0; i < output.angles.size(); i++)
     {
       printf("cand. poses (%f,%f,%f) [Rotation::fmt2]\n",
         virtual_pose.x,
         virtual_pose.y,
-        virtual_pose.t+angles[i]);
+        virtual_pose.t+output.angles[i]);
     }
 #endif
 
-    return angles;
+    return output;
   }
 
   /*****************************************************************************
   */
-  static void fmt1Sequential(
+  static FMTOutput fmt1Sequential(
     const std::vector< double >& real_scan,
-    const std::vector< double >& virtual_scan,
-    double* angle, double* snr, double* fahm, double* pd)
+    const std::vector< double >& virtual_scan)
   {
-    std::vector<double> q_0;
-    unsigned int q_0_max_id;
-    fmt0Sequential(real_scan, virtual_scan, &q_0, &q_0_max_id);
+    const auto [q_0, q_0_max_id] = fmt0Sequential(real_scan, virtual_scan);
 
+    FMTOutput output;
 
     /* Calculate angle */
-    *angle = static_cast<double>(
+    output.angle = static_cast<double>(
       (real_scan.size()-q_0_max_id))/(real_scan.size())*2*M_PI;
-    *angle = Utils::wrapAngle(*angle);
+    output.angle = Utils::wrapAngle(output.angle);
 
     /* Calculate SNR */
     std::vector<double> q_0_background = q_0;
@@ -3042,7 +3154,7 @@ public:
 
     std::pair<double,double> q_0_mmnts = Utils::vectorStatistics(q_0_background);
 
-    *snr = fabs((q_0[q_0_max_id] - q_0_mmnts.first)) / q_0_mmnts.second;
+    output.snr = fabs((q_0[q_0_max_id] - q_0_mmnts.first)) / q_0_mmnts.second;
 
     /* Calculate FAHM */
     unsigned int count = 0;
@@ -3052,27 +3164,23 @@ public:
         count++;
     }
 
-    *fahm = static_cast<double>(count) / q_0.size();
+    output.fahm = static_cast<double>(count) / q_0.size();
 
     /* Calculate PD */
-    std::vector<double> q_ss;
-    unsigned int q_ss_max_id;
-    fmt0Sequential(real_scan, real_scan, &q_ss, &q_ss_max_id);
+    const auto [q_ss, q_ss_max_id] = fmt0Sequential(real_scan, real_scan);
 
-    std::vector<double> q_rr;
-    unsigned int q_rr_max_id;
-    fmt0Sequential(virtual_scan, virtual_scan, &q_rr, &q_rr_max_id);
+    const auto [q_rr, q_rr_max_id] = fmt0Sequential(virtual_scan, virtual_scan);
 
-    *pd = 2*q_0[q_0_max_id] / (q_ss[q_ss_max_id] + q_rr[q_rr_max_id]);
+    output.pd = 2*q_0[q_0_max_id] / (q_ss[q_ss_max_id] + q_rr[q_rr_max_id]);
+
+    return output;
   }
 
   /*****************************************************************************
   */
-  static void fmt0Sequential(
+  static Correlation fmt0Sequential(
     const std::vector< double >& real_scan,
-    const std::vector< double >& virtual_scan,
-    std::vector<double>* q_0,
-    unsigned int* q_0_max_id)
+    const std::vector< double >& virtual_scan)
   {
     assert(real_scan.size() == virtual_scan.size());
 
@@ -3119,17 +3227,19 @@ public:
 
     std::vector< std::pair<double, double> > Q_0 = numerator;
 
-    *q_0 = DFTUtils::idft(Q_0);
+    Correlation correlation;
+    correlation.q_0 = DFTUtils::idft(Q_0);
+    correlation.q_0_max_id =
+      std::max_element(correlation.q_0.begin(), correlation.q_0.end())
+      - correlation.q_0.begin();
 
-    *q_0_max_id = std::max_element(q_0->begin(), q_0->end()) - q_0->begin();
+    return correlation;
   }
 
   /*****************************************************************************
   */
-  static void fmt0AutoSequential(
-    const std::vector< double >& real_scan,
-    std::vector<double>* q_0,
-    unsigned int* q_0_max_id)
+  static Correlation fmt0AutoSequential(
+    const std::vector< double >& real_scan)
   {
     /* Find fft of real scan */
     std::vector<double> fft_real = DFTUtils::dft(real_scan);
@@ -3147,22 +3257,24 @@ public:
 
     std::vector< std::pair<double, double> > Q_0 = numerator;
 
-    *q_0 = DFTUtils::idft(Q_0);
+    Correlation correlation;
+    correlation.q_0 = DFTUtils::idft(Q_0);
+    correlation.q_0_max_id =
+      std::max_element(correlation.q_0.begin(), correlation.q_0.end())
+      - correlation.q_0.begin();
 
-    *q_0_max_id = std::max_element(q_0->begin(), q_0->end()) - q_0->begin();
+    return correlation;
   }
 
   /***************************************************************************
    * FMT batch execution functions (faster)
    */
-  static std::vector<double> fmt2Batch(
+  static RotationOutput fmt2Batch(
     const std::vector< double >& real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
-    const fftw_plan& r2rp, const fftw_plan& c2rp,
-    std::vector<double>* rc0, std::vector<double>* rc1,
-    std::chrono::duration<double>* intersections_time)
+    const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
 #if defined(PRINTS)
     printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
@@ -3171,8 +3283,7 @@ public:
       virtual_pose.t);
 #endif
 
-    rc0->clear();
-    rc1->clear();
+    RotationOutput output;
 
     Pose zero_pose;
     zero_pose.x = 0.0;
@@ -3192,7 +3303,7 @@ public:
 
     std::chrono::high_resolution_clock::time_point int_end =
       std::chrono::high_resolution_clock::now();
-    *intersections_time =
+    output.intersections_time =
       std::chrono::duration_cast< std::chrono::duration<double> >(int_end-int_start);
 
     const std::vector<double> virtual_scan_fine =
@@ -3225,13 +3336,21 @@ public:
      * Compute the angles and metrics of matching the real scan against each and
      * all virtual scans
      */
+    const std::vector<FMTOutput> fmt_outputs =
+      fmt1Batch(real_scan, virtual_scans, r2rp, c2rp);
+
     std::vector<double> un_angles;
     std::vector<double> snrs;
     std::vector<double> fahms;
     std::vector<double> pds;
 
-    fmt1Batch(real_scan, virtual_scans, r2rp, c2rp,
-      &un_angles, &snrs, &fahms, &pds);
+    for (const FMTOutput& fmt_output : fmt_outputs)
+    {
+      un_angles.push_back(fmt_output.angle);
+      snrs.push_back(fmt_output.snr);
+      fahms.push_back(fmt_output.fahm);
+      pds.push_back(fmt_output.pd);
+    }
 
     /*
      * Correct the angles returned to get the proper pose from which each
@@ -3250,13 +3369,12 @@ public:
     std::vector<unsigned int> optimal_ids =
       rankFMTOutput(snrs, fahms, pds, 3, magnification_size, 0.00001);
 
-    std::vector<double> cand_angles;
     for (unsigned int i = 0; i < optimal_ids.size(); i++)
     {
-      cand_angles.push_back(angles[optimal_ids[i]]);
+      output.angles.push_back(angles[optimal_ids[i]]);
 
-      rc0->push_back(pds[optimal_ids[i]]);
-      rc1->push_back(snrs[optimal_ids[i]] / fahms[optimal_ids[i]]);
+      output.rc0.push_back(pds[optimal_ids[i]]);
+      output.rc1.push_back(snrs[optimal_ids[i]] / fahms[optimal_ids[i]]);
     }
 
 #if defined (TIMES)
@@ -3264,87 +3382,88 @@ public:
 #endif
 
 #if defined (PRINTS)
-    for (unsigned int i = 0; i < cand_angles.size(); i++)
+    for (unsigned int i = 0; i < output.angles.size(); i++)
     {
       printf("cand. poses (%f,%f,%f) [Rotation::fmt2]\n",
         virtual_pose.x,
         virtual_pose.y,
-        virtual_pose.t+cand_angles[i]);
+        virtual_pose.t+output.angles[i]);
     }
 #endif
 
-    return cand_angles;
+    return output;
   }
 
   /*****************************************************************************
   */
-  static void fmt1Batch(
+  static std::vector<FMTOutput> fmt1Batch(
     const std::vector< double >& real_scan,
     const std::vector< std::vector< double > >& virtual_scans,
-    const fftw_plan& r2rp, const fftw_plan& c2rp,
-    std::vector<double>* angles,
-    std::vector<double>* snrs,
-    std::vector<double>* fahms,
-    std::vector<double>* pds)
+    const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
-    std::vector< std::vector<double> > q_0_v;
-    std::vector< unsigned int > q_0_max_id_v;
-    fmt0Batch(real_scan, virtual_scans, r2rp, c2rp, &q_0_v, &q_0_max_id_v);
+    const std::vector<Correlation> correlations =
+      fmt0Batch(real_scan, virtual_scans, r2rp, c2rp);
 
     /* Calculate PD */
-    std::vector<double> q_ss;
-    unsigned int q_ss_max_id;
-    fmt0AutoSequential(real_scan, &q_ss, &q_ss_max_id);
+    const auto [q_ss, q_ss_max_id] = fmt0AutoSequential(real_scan);
 
-    std::vector< std::vector<double> > q_rr_v;
-    std::vector< unsigned int > q_rr_max_id_v;
-    fmt0AutoBatch(virtual_scans, r2rp, c2rp, &q_rr_v, &q_rr_max_id_v);
+    const std::vector<Correlation> auto_correlations =
+      fmt0AutoBatch(virtual_scans, r2rp, c2rp);
 
+    std::vector<FMTOutput> outputs;
     for (unsigned int i = 0; i < virtual_scans.size(); i++)
     {
+      const std::vector<double>& q_0_i = correlations[i].q_0;
+      const unsigned int q_0_max_id_i = correlations[i].q_0_max_id;
+
+      FMTOutput output;
+
       /* Calculate angle */
       double angle = static_cast<double>(
-        (real_scan.size()-q_0_max_id_v[i]))/(real_scan.size())*2*M_PI;
+        (real_scan.size()-q_0_max_id_i))/(real_scan.size())*2*M_PI;
       angle = Utils::wrapAngle(angle);
 
-      angles->push_back(angle);
+      output.angle = angle;
 
       /* Calculate pd */
-      double pd = 2*q_0_v[i][q_0_max_id_v[i]]
-        / (q_ss[q_ss_max_id] + q_rr_v[i][q_rr_max_id_v[i]]);
-      pds->push_back(pd);
+      double pd = 2*q_0_i[q_0_max_id_i]
+        / (q_ss[q_ss_max_id]
+          + auto_correlations[i].q_0[auto_correlations[i].q_0_max_id]);
+      output.pd = pd;
 
       /* Calculate SNR */
-      std::vector<double> q_0_background = q_0_v[i];
-      q_0_background.erase(q_0_background.begin() + q_0_max_id_v[i]);
+      std::vector<double> q_0_background = q_0_i;
+      q_0_background.erase(q_0_background.begin() + q_0_max_id_i);
 
       std::pair<double,double> q_0_mmnts = Utils::vectorStatistics(q_0_background);
 
       double snr =
-        fabs((q_0_v[i][q_0_max_id_v[i]] - q_0_mmnts.first)) / q_0_mmnts.second;
-      snrs->push_back(snr);
+        fabs((q_0_i[q_0_max_id_i] - q_0_mmnts.first)) / q_0_mmnts.second;
+      output.snr = snr;
 
       /* Calculate FAHM */
       unsigned int count = 0;
-      for (unsigned int f = 0; f < q_0_v[i].size(); f++)
+      for (unsigned int f = 0; f < q_0_i.size(); f++)
       {
-        if (q_0_v[i][f] >= 0.5 * q_0_v[i][q_0_max_id_v[i]])
+        if (q_0_i[f] >= 0.5 * q_0_i[q_0_max_id_i])
           count++;
       }
 
-      double fahm = static_cast<double>(count) / q_0_v[i].size();
-      fahms->push_back(fahm);
+      double fahm = static_cast<double>(count) / q_0_i.size();
+      output.fahm = fahm;
+
+      outputs.push_back(output);
     }
+
+    return outputs;
   }
 
   /*****************************************************************************
   */
-  static void fmt0Batch(
+  static std::vector<Correlation> fmt0Batch(
     const std::vector<double>& real_scan,
     const std::vector< std::vector<double> > & virtual_scans,
-    const fftw_plan& r2rp, const fftw_plan& c2rp,
-    std::vector< std::vector<double> >* q_0_v,
-    std::vector<unsigned int>* q_0_max_id_v)
+    const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
     assert(virtual_scans.size() > 0);
     assert(real_scan.size() == virtual_scans[0].size());
@@ -3392,25 +3511,27 @@ public:
       Q_0_v.push_back(numerator);
     }
 
-    *q_0_v = DFTUtils::idftBatch(Q_0_v, c2rp);
+    const std::vector< std::vector<double> > q_0_v =
+      DFTUtils::idftBatch(Q_0_v, c2rp);
 
-    for (unsigned int i = 0; i < q_0_v->size(); i++)
+    std::vector<Correlation> correlations;
+    for (unsigned int i = 0; i < q_0_v.size(); i++)
     {
       unsigned int q_0_max_id =
-        std::max_element(q_0_v->at(i).begin(), q_0_v->at(i).end())
-        - q_0_v->at(i).begin();
+        std::max_element(q_0_v.at(i).begin(), q_0_v.at(i).end())
+        - q_0_v.at(i).begin();
 
-      q_0_max_id_v->push_back(q_0_max_id);
+      correlations.push_back(Correlation{q_0_v[i], q_0_max_id});
     }
+
+    return correlations;
   }
 
   /*****************************************************************************
   */
-  static void fmt0AutoBatch(
+  static std::vector<Correlation> fmt0AutoBatch(
     const std::vector< std::vector<double> > & virtual_scans,
-    const fftw_plan& r2rp, const fftw_plan& c2rp,
-    std::vector< std::vector<double> >* q_0_v,
-    std::vector<unsigned int>* q_0_max_id_v)
+    const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
     assert(virtual_scans.size() > 0);
 
@@ -3437,16 +3558,20 @@ public:
       Q_0_v.push_back(numerator);
     }
 
-    *q_0_v = DFTUtils::idftBatch(Q_0_v, c2rp);
+    const std::vector< std::vector<double> > q_0_v =
+      DFTUtils::idftBatch(Q_0_v, c2rp);
 
-    for (unsigned int i = 0; i < q_0_v->size(); i++)
+    std::vector<Correlation> correlations;
+    for (unsigned int i = 0; i < q_0_v.size(); i++)
     {
       unsigned int q_0_max_id =
-        std::max_element(q_0_v->at(i).begin(), q_0_v->at(i).end())
-        -q_0_v->at(i).begin();
+        std::max_element(q_0_v.at(i).begin(), q_0_v.at(i).end())
+        -q_0_v.at(i).begin();
 
-      q_0_max_id_v->push_back(q_0_max_id);
+      correlations.push_back(Correlation{q_0_v[i], q_0_max_id});
     }
+
+    return correlations;
   }
 
   /*****************************************************************************
@@ -3635,16 +3760,19 @@ class Match
 
   /*****************************************************************************
   */
-  static void fmtdbh(
+  static MatchOutput fmtdbh(
     const std::vector< double >& real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const fftw_plan& r2rp, const fftw_plan& c2rp,
-    const input_params& ip, output_params* op,
-    Pose* result_pose)
+    const input_params& ip)
   {
     std::chrono::high_resolution_clock::time_point start =
       std::chrono::high_resolution_clock::now();
+
+    MatchOutput match;
+    output_params* const op = &match.op;
+    Pose* const result_pose = &match.pose;
 
     *result_pose = virtual_pose;
 
@@ -3700,18 +3828,19 @@ class Match
       /*
        * ----------------- Rotation correction phase ---------------------------
        */
-      std::vector<double> rc0;
-      std::vector<double> rc1;
-      std::vector<double> cand_angles;
-
 #if (defined TIMES) || (defined LOGS)
       std::chrono::high_resolution_clock::time_point start_rotation =
         std::chrono::high_resolution_clock::now();
 #endif
 
-      cand_angles = Rotation::fmt(real_scan, *result_pose, map,
-        current_magnification_size, "batch", r2rp, c2rp,
-        &rc0, &rc1, &intersections_time);
+      const RotationOutput rotation_output = Rotation::fmt(real_scan,
+        *result_pose, map, current_magnification_size, "batch", r2rp, c2rp);
+
+      const std::vector<double>& rc0 = rotation_output.rc0;
+      const std::vector<double>& rc1 = rotation_output.rc1;
+      std::vector<double> cand_angles = rotation_output.angles;
+
+      intersections_time = rotation_output.intersections_time;
 
 #if (defined TIMES) || (defined LOGS)
       std::chrono::high_resolution_clock::time_point end_rotation =
@@ -3744,7 +3873,7 @@ class Match
         {
           /* How many test iterations? */
           unsigned int ni = 2;
-          int tr_i = 0;
+          [[maybe_unused]] int tr_i = 0;
 
           Pose cand_pose = *result_pose;
           cand_pose.t += cand_angles[ca];
@@ -3754,8 +3883,13 @@ class Match
             std::chrono::high_resolution_clock::now();
 #endif
 
-          double tc = Translation::tff(real_scan, cand_pose, map,
-            ni, ip.xy_bound, false, r2rp, &tr_i, &intersections_time, &cand_pose);
+          const TranslationOutput translation_output =
+            Translation::tff(real_scan, cand_pose, map,
+              ni, ip.xy_bound, false, r2rp);
+
+          const double tc = translation_output.criterion;
+          tr_i = translation_output.iterations;
+          intersections_time = translation_output.intersections_time;
 
 #if (defined TIMES) || (defined LOGS)
           std::chrono::high_resolution_clock::time_point end_translation =
@@ -3811,7 +3945,7 @@ class Match
       num_iterations =
         (current_magnification_size+1)*ip.num_iterations;
 
-      int tr_iterations = -1;
+      [[maybe_unused]] int tr_iterations = -1;
       [[maybe_unused]] double int_time_trans = 0.0;
 
 #if (defined TIMES) || (defined LOGS)
@@ -3819,9 +3953,13 @@ class Match
         std::chrono::high_resolution_clock::now();
 #endif
 
-      double trans_criterion = Translation::tff(real_scan,
-        *result_pose, map, num_iterations, ip.xy_bound, true, r2rp,
-        &tr_iterations, &intersections_time, result_pose);
+      const TranslationOutput translation_output = Translation::tff(real_scan,
+        *result_pose, map, num_iterations, ip.xy_bound, true, r2rp);
+
+      const double trans_criterion = translation_output.criterion;
+      tr_iterations = translation_output.iterations;
+      intersections_time = translation_output.intersections_time;
+      *result_pose = translation_output.pose;
 
 #if (defined TIMES) || (defined LOGS)
       std::chrono::high_resolution_clock::time_point end_translation =
@@ -3894,7 +4032,7 @@ class Match
         }
 
         num_recoveries++;
-        l2recovery(virtual_pose, map, ip.xy_bound, ip.t_bound, result_pose,
+        *result_pose = l2recovery(virtual_pose, map, ip.xy_bound, ip.t_bound,
           ip.rng_seed);
 
         counter = min_counter;
@@ -3934,15 +4072,16 @@ class Match
     op->rotation_iterations = total_iterations;
     op->num_recoveries = num_recoveries;
 #endif
+
+    return match;
   }
 
   /*****************************************************************************
   */
-  static void l2recovery(
+  static Pose l2recovery(
     const Pose& input_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& xy_bound, const double& t_bound,
-    Pose* output_pose,
     const unsigned int seed = 0)
   {
 #if defined (PRINTS)
@@ -3952,8 +4091,11 @@ class Match
     printf("*********************************\n");
 #endif
 
-    while(!Utils::generatePose(input_pose, map,
-        1*xy_bound, t_bound, 0.0, output_pose, seed));
+    std::optional<Pose> output_pose;
+    while (!(output_pose = Utils::generatePose(input_pose, map,
+        1*xy_bound, t_bound, 0.0, seed)));
+
+    return *output_pose;
   }
 };
 }

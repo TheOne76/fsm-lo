@@ -201,9 +201,9 @@ TEST(RecoverySeed, TheSameSeedProducesTheSameSequence)
     std::vector<double> drawn;
     for (int i = 0; i < 8; i++)
     {
-      FSM::Pose pose;
-      FSM::Utils::generatePose(base, map, 0.2, 0.3, 0.0, &pose,
-        i == 0 ? seed : 0);
+      const FSM::Pose pose =
+        FSM::Utils::generatePose(base, map, 0.2, 0.3, 0.0,
+          i == 0 ? seed : 0).value();
       drawn.push_back(pose.x);
       drawn.push_back(pose.y);
       drawn.push_back(pose.t);

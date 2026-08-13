@@ -162,21 +162,20 @@ Matcher::process(std::span<const double> ranges)
   const std::vector<std::pair<double, double>> reference_points =
     FSM::Utils::scan2points(reference_scan_, origin);
 
-  FSM::output_params op;
-  Pose increment;
-  FSM::Match::fmtdbh(scan, origin, reference_points, forward_plan_,
-    inverse_plan_, asInputParams(parameters_), &op, &increment);
+  const FSM::MatchOutput match = FSM::Match::fmtdbh(scan, origin,
+    reference_points, forward_plan_, inverse_plan_,
+    asInputParams(parameters_));
 
-  accumulated_ = FSM::Utils::computeTransform(increment, accumulated_);
+  accumulated_ = FSM::Utils::computeTransform(match.pose, accumulated_);
   trajectory_.push_back(accumulatedPose());
 
   reference_scan_ = std::move(scan);
 
   return MatchResult{
-    increment,
+    match.pose,
     accumulatedPose(),
-    op.exec_time,
-    op.num_recoveries};
+    match.op.exec_time,
+    match.op.num_recoveries};
 }
 
 /*******************************************************************************

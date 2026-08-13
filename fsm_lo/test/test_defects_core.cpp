@@ -166,10 +166,9 @@ TEST(TranslationStage, FirstCoefficientNormIsDoublePrecision)
   fftw_free(in);
   fftw_free(out);
 
-  std::vector<double> d_v;
-  double norm_x1 = 0.0;
-  FSM::Translation::tffCore(real_scan, virtual_scan, 0.0, 1000.0, r2rp,
-    &d_v, &norm_x1);
+  const FSM::TranslationCorrection correction =
+    FSM::Translation::tffCore(real_scan, virtual_scan, 0.0, 1000.0, r2rp);
+  const double norm_x1 = correction.norm_x1;
 
   const auto [diff, d_v_expected] =
     FSM::Utils::diffScansPerRay(real_scan, virtual_scan, 1000.0);
