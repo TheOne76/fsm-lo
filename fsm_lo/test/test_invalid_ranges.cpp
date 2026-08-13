@@ -184,3 +184,50 @@ TEST(InvalidRanges, IsValidRangeAgreesWithItsDocumentation)
   EXPECT_FALSE(fsm_lo::isValidRange(-kInfinity));
   EXPECT_FALSE(fsm_lo::isValidRange(kNotANumber));
 }
+
+TEST(RecoverySeed, TheSameSeedProducesTheSameSequence)
+{
+  const std::tuple<double, double, double> base(0.0, 0.0, 0.0);
+  const std::vector<std::pair<double, double>> map{
+    {-4.0, -4.0}, {4.0, -4.0}, {4.0, 4.0}, {-4.0, 4.0}};
+
+  /*
+   * A seed takes effect once and the stream runs on from there, which is what
+   * makes a whole session replayable. Returning to a seed therefore has to go
+   * by way of a different one, exactly as restarting the process would.
+   */
+  const auto draw = [&](const unsigned int seed)
+  {
+    std::vector<double> drawn;
+    for (int i = 0; i < 8; i++)
+    {
+      std::tuple<double, double, double> pose;
+      FSM::Utils::generatePose(base, map, 0.2, 0.3, 0.0, &pose,
+        i == 0 ? seed : 0);
+      drawn.push_back(std::get<0>(pose));
+      drawn.push_back(std::get<1>(pose));
+      drawn.push_back(std::get<2>(pose));
+    }
+    return drawn;
+  };
+
+  const std::vector<double> first = draw(20260813);
+  const std::vector<double> other = draw(11111111);
+  const std::vector<double> again = draw(20260813);
+
+  ASSERT_EQ(first.size(), again.size());
+  for (std::size_t i = 0; i < first.size(); i++)
+    EXPECT_DOUBLE_EQ(first[i], again[i]) << "element " << i;
+
+  EXPECT_NE(first, other) << "two different seeds produced the same sequence";
+}
+
+TEST(RecoverySeed, TheParametersCarryTheSeedIntoTheMatcher)
+{
+  fsm_lo::Parameters p;
+  p.rng_seed = 4242;
+
+  EXPECT_EQ(p.rng_seed, 4242u);
+  EXPECT_EQ(fsm_lo::Parameters{}.rng_seed, 0u)
+    << "the default must keep drawing from hardware entropy";
+}

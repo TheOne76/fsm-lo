@@ -88,6 +88,10 @@ struct input_params
   unsigned int min_magnification_size;
   unsigned int max_magnification_size;
   unsigned int max_recoveries;
+
+  /* Zero draws the recovery search from hardware entropy, as this algorithm
+   * has always done. Any other value pins it so a run can be reproduced. */
+  unsigned int rng_seed;
 };
 /* ========================================================================== */
 struct output_params
@@ -549,6 +553,27 @@ class Utils
   public:
 
   /*****************************************************************************
+   * The engine behind every random pose the recovery search tries.
+   *
+   * A seed of zero draws from hardware entropy, which is what this algorithm
+   * has always done and which no run can reproduce. Any other value seeds the
+   * engine once and leaves it running, so a whole session replays identically.
+   */
+  static std::mt19937& randomEngine(const unsigned int seed = 0)
+  {
+    static thread_local std::mt19937 engine{std::random_device{}()};
+    static thread_local unsigned int current_seed = 0;
+
+    if (seed != 0 && seed != current_seed)
+    {
+      engine.seed(seed);
+      current_seed = seed;
+    }
+
+    return engine;
+  }
+
+  /*****************************************************************************
   */
   static Eigen::Matrix3d
   computeTransform(const std::tuple<double,double,double>& d,
@@ -676,17 +701,15 @@ class Utils
     const std::tuple<double,double,double>& base_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& dxy, const double& dt, const double& dist_threshold,
-    std::tuple<double,double,double>* real_pose)
+    std::tuple<double,double,double>* real_pose,
+    const unsigned int seed = 0)
   {
     assert(dxy >= 0.0);
     assert(dt >= 0.0);
 
-    std::random_device rand_dev_x;
-    std::random_device rand_dev_y;
-    std::random_device rand_dev_t;
-    std::mt19937 generator_x(rand_dev_x());
-    std::mt19937 generator_y(rand_dev_y());
-    std::mt19937 generator_t(rand_dev_t());
+    std::mt19937& generator_x = randomEngine(seed);
+    std::mt19937& generator_y = generator_x;
+    std::mt19937& generator_t = generator_x;
 
     std::uniform_real_distribution<double> distribution_x(-dxy, dxy);
     std::uniform_real_distribution<double> distribution_y(-dxy, dxy);
@@ -1329,7 +1352,13 @@ class DatasetUtils
       if (ranges[i] == 0)
       {
         int region_begin = i;
-        int region_end;
+
+        /*
+         * Every path below writes this before it is read, but only just: the
+         * compiler cannot see that and neither can a reader. Give it the value
+         * it takes when the run reaches the end of the scan.
+         */
+        int region_end = static_cast<int>(ranges.size()) - 1;
         bool broke = false;
         for (j = region_begin+1; j < static_cast<int>(ranges.size()); j++)
         {
@@ -3884,7 +3913,8 @@ class Match
         }
 
         num_recoveries++;
-        l2recovery(virtual_pose, map, ip.xy_bound, ip.t_bound, result_pose);
+        l2recovery(virtual_pose, map, ip.xy_bound, ip.t_bound, result_pose,
+          ip.rng_seed);
 
         counter = min_counter;
         current_magnification_size = min_magnification_size;
@@ -3931,7 +3961,8 @@ class Match
     const std::tuple<double,double,double>& input_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& xy_bound, const double& t_bound,
-    std::tuple<double,double,double>* output_pose)
+    std::tuple<double,double,double>* output_pose,
+    const unsigned int seed = 0)
   {
 #if defined (PRINTS)
     printf("*********************************\n");
@@ -3941,7 +3972,7 @@ class Match
 #endif
 
     while(!Utils::generatePose(input_pose, map,
-        1*xy_bound, t_bound, 0.0, output_pose));
+        1*xy_bound, t_bound, 0.0, output_pose, seed));
   }
 };
 }

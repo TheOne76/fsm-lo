@@ -41,6 +41,19 @@ style this package has never used. Satisfying them means reformatting 3800
 lines of inherited numerical code, which is the riskiest change available for
 no behavioural gain. Every other check `ament_lint_common` provides is on.
 
+## The recovery path is untested across versions
+
+The matcher falls back on a randomly seeded search when a match goes badly.
+`rng_seed` pins it so a run can be reproduced within one build, and there is a
+unit test for that, but the cross version comparison deliberately never
+exercises it: the synthetic motion is small enough that recovery never fires,
+which the harness asserts.
+
+The reason is that the standard library does not specify how a distribution
+turns random bits into a number, so two implementations may differ even from
+the same seed. Comparing the recovery path across versions would first need
+that conversion written out explicitly rather than taken from the library.
+
 ## Deeper modernisation of the core was not attempted
 
 The core builds clean as C++23 and its warnings are gone, but it is still

@@ -53,6 +53,7 @@ FSM::input_params asInputParams(const Parameters& parameters)
   ip.min_magnification_size = parameters.min_magnification_size;
   ip.max_magnification_size = parameters.max_magnification_size;
   ip.max_recoveries = parameters.max_recoveries;
+  ip.rng_seed = parameters.rng_seed;
   return ip;
 }
 
