@@ -350,6 +350,20 @@ void Interface::scanCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr scan)
   RCLCPP_INFO(get_logger(), "FSM executed in %.1f ms",
     1000.0 * result->execution_time);
 
+  /*
+   * Recovery draws a pose at random, so a match that needed it is not
+   * reproducible across two builds even from the same seed: the standard
+   * library does not specify how a distribution turns random bits into a
+   * number. Any comparison of this node against another build is only as good
+   * as this line staying quiet.
+   */
+  if (result->num_recoveries > 0)
+  {
+    RCLCPP_WARN(get_logger(),
+      "Match needed %u recovery attempts; this scan pair is not reproducible "
+      "across builds", result->num_recoveries);
+  }
+
   publishTransform(*result, stamp);
   publishOdometry(*result, stamp, interval);
   publishPose(*result, stamp);

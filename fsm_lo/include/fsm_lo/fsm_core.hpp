@@ -4069,9 +4069,9 @@ class Match
     op->exec_time = elapsed.count();
     op->rc = rc0_v.back();
     op->tc = tc_v.back();
+    op->num_recoveries = num_recoveries;
 #if defined (LOGS)
     op->rotation_iterations = total_iterations;
-    op->num_recoveries = num_recoveries;
 #endif
 
     return match;
