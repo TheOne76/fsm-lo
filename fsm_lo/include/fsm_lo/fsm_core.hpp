@@ -35,6 +35,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <mutex>
 #include <numeric>
 #include <random>
@@ -777,7 +778,7 @@ class Utils
   /*****************************************************************************
   */
   static ScanDifference diffScansPerRay(
-    const std::vector<double>& scan1, const std::vector<double>& scan2,
+    const std::span<const double> scan1, const std::span<const double> scan2,
     const double& inclusion_bound)
   {
     assert (scan1.size() == scan2.size());
@@ -1009,8 +1010,8 @@ class Utils
 
   /*****************************************************************************
   */
-  static std::vector<double> innerProduct(const std::vector<double>& vec1,
-    const std::vector<double>& vec2)
+  static std::vector<double> innerProduct(const std::span<const double> vec1,
+    const std::span<const double> vec2)
   {
     assert(vec1.size() == vec2.size());
 
@@ -1223,7 +1224,7 @@ class Utils
   /*****************************************************************************
   */
   static std::vector< std::pair<double,double> > scan2points(
-    const std::vector<double>& scan,
+    const std::span<const double> scan,
     const Pose pose,
     const double& angle_span = 2*M_PI)
   {
@@ -1286,7 +1287,7 @@ class Utils
   /*****************************************************************************
   */
   static std::vector<double>
-  subsampleScan(const std::vector<double>& scan_in, const size_t& sz)
+  subsampleScan(const std::span<const double> scan_in, const size_t& sz)
   {
     Pose zero_pose;
     zero_pose.x = 0.0;
@@ -1320,7 +1321,7 @@ class Utils
   /***************************************************************************
   */
   static std::pair<double,double> vectorStatistics(
-    const std::vector< double >& v)
+    const std::span<const double> v)
   {
     double sum = std::accumulate(v.begin(), v.end(), 0.0);
     double mean = sum / v.size();
@@ -1479,7 +1480,7 @@ class DatasetUtils
   /*****************************************************************************
   */
   static std::vector<double>
-  interpolateRanges( const std::vector<double>& ranges)
+  interpolateRanges( const std::span<const double> ranges)
   {
     /* Identify contiguous regions of zero measurement */
     std::vector< std::vector <int> > regions;
@@ -1540,7 +1541,7 @@ class DatasetUtils
 
     /* Nothing was invalid, so there is nothing to interpolate over */
     if (regions.empty())
-      return ranges;
+      return std::vector<double>(ranges.begin(), ranges.end());
 
     /* Is the first index 0 and the last equal to the size-1? */
     int num_regions = regions.size();
@@ -1565,7 +1566,7 @@ class DatasetUtils
      * }
      */
 
-    std::vector<double> ranges_interp = ranges;
+    std::vector<double> ranges_interp(ranges.begin(), ranges.end());
 
     for (unsigned int i = 0; i < regions.size(); i++)
     {
@@ -1716,9 +1717,9 @@ class Dump
   /*****************************************************************************
   */
   static void scan(
-    const std::vector<double>& real_scan,
+    const std::span<const double> real_scan,
     const Pose& real_pose,
-    const std::vector<double>& virtual_scan,
+    const std::span<const double> virtual_scan,
     const Pose& virtual_pose,
     const std::string& dump_filepath)
   {
@@ -1763,8 +1764,8 @@ class Dump
   /*****************************************************************************
   */
   static void rangeScan(
-    const std::vector<double>& real_scan,
-    const std::vector<double>& virtual_scan,
+    const std::span<const double> real_scan,
+    const std::span<const double> virtual_scan,
     const std::string& dump_filepath)
   {
     std::ofstream file(dump_filepath.c_str(), std::ios::trunc);
@@ -2054,7 +2055,7 @@ class ScanCompletion
   */
   static CompletedScan completeScan5(
     const Pose& pose,
-    const std::vector<double>& scan_in,
+    const std::span<const double> scan_in,
     const unsigned int& num_rays)
   {
     const std::vector< std::pair<double,double> > scan_points =
@@ -2201,7 +2202,7 @@ class DFTUtils
    * second the imaginary part of it.
    */
   static std::vector<double> getFirstDFTCoefficient(
-    const std::vector<double>& rays_diff)
+    const std::span<const double> rays_diff)
   {
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point a =
@@ -2253,7 +2254,7 @@ class DFTUtils
   /****************************************************************************
   */
   static std::vector<double> getFirstDFTCoefficient(
-    const std::vector<double>& rays_diff,
+    const std::span<const double> rays_diff,
     const fftw_plan& r2rp)
   {
 #ifdef TIMES
@@ -2306,7 +2307,7 @@ class DFTUtils
   /*****************************************************************************
   */
   static std::vector< std::pair<double, double> >
-  getDFTCoefficientsPairs(const std::vector<double>& coeffs)
+  getDFTCoefficientsPairs(const std::span<const double> coeffs)
   {
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point a =
@@ -2354,7 +2355,7 @@ class DFTUtils
    * in range between a world scan and a map scan.
    * @return [std::vector<double>] The vector's DFT coefficients.
    */
-  static std::vector<double> dft(const std::vector<double>& rays_diff)
+  static std::vector<double> dft(const std::span<const double> rays_diff)
   {
 #ifdef TIMES
     std::chrono::high_resolution_clock::time_point a =
@@ -2395,7 +2396,7 @@ class DFTUtils
 
   /*****************************************************************************
   */
-  static std::vector<double> dft(const std::vector<double>& rays_diff,
+  static std::vector<double> dft(const std::span<const double> rays_diff,
     const fftw_plan& r2rp)
   {
 #ifdef TIMES
@@ -2721,7 +2722,7 @@ class Translation
   /*****************************************************************************
   */
   static TranslationOutput tff(
-    const std::vector< double >& real_scan,
+    const std::span<const double> real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const int& max_iterations,
@@ -2906,8 +2907,8 @@ class Translation
   /*****************************************************************************
   */
   static TranslationCorrection tffCore(
-    const std::vector< double >& real_scan,
-    const std::vector< double >& virtual_scan,
+    const std::span<const double> real_scan,
+    const std::span<const double> virtual_scan,
     const double& current_t,
     const double& inclusion_bound,
     const fftw_plan& r2rp)
@@ -2939,7 +2940,7 @@ class Translation
   /*****************************************************************************
   */
   static std::vector<double> turnDFTCoeffsIntoErrors(
-    const std::vector<double>& dft_coeff,
+    const std::span<const double> dft_coeff,
     const int& num_valid_rays,
     const double& starting_angle)
   {
@@ -2990,7 +2991,7 @@ public:
   /*****************************************************************************
   */
   static RotationOutput fmt(
-    const std::vector< double >& real_scan,
+    const std::span<const double> real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
@@ -3013,7 +3014,7 @@ public:
    * FMT sequential execution functions (slower)
    */
   static RotationOutput fmt2Sequential(
-    const std::vector< double >& real_scan,
+    const std::span<const double> real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size)
@@ -3136,8 +3137,8 @@ public:
   /*****************************************************************************
   */
   static FMTOutput fmt1Sequential(
-    const std::vector< double >& real_scan,
-    const std::vector< double >& virtual_scan)
+    const std::span<const double> real_scan,
+    const std::span<const double> virtual_scan)
   {
     const auto [q_0, q_0_max_id] = fmt0Sequential(real_scan, virtual_scan);
 
@@ -3179,8 +3180,8 @@ public:
   /*****************************************************************************
   */
   static Correlation fmt0Sequential(
-    const std::vector< double >& real_scan,
-    const std::vector< double >& virtual_scan)
+    const std::span<const double> real_scan,
+    const std::span<const double> virtual_scan)
   {
     assert(real_scan.size() == virtual_scan.size());
 
@@ -3239,7 +3240,7 @@ public:
   /*****************************************************************************
   */
   static Correlation fmt0AutoSequential(
-    const std::vector< double >& real_scan)
+    const std::span<const double> real_scan)
   {
     /* Find fft of real scan */
     std::vector<double> fft_real = DFTUtils::dft(real_scan);
@@ -3270,7 +3271,7 @@ public:
    * FMT batch execution functions (faster)
    */
   static RotationOutput fmt2Batch(
-    const std::vector< double >& real_scan,
+    const std::span<const double> real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
@@ -3397,7 +3398,7 @@ public:
   /*****************************************************************************
   */
   static std::vector<FMTOutput> fmt1Batch(
-    const std::vector< double >& real_scan,
+    const std::span<const double> real_scan,
     const std::vector< std::vector< double > >& virtual_scans,
     const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
@@ -3461,7 +3462,7 @@ public:
   /*****************************************************************************
   */
   static std::vector<Correlation> fmt0Batch(
-    const std::vector<double>& real_scan,
+    const std::span<const double> real_scan,
     const std::vector< std::vector<double> > & virtual_scans,
     const fftw_plan& r2rp, const fftw_plan& c2rp)
   {
@@ -3577,9 +3578,9 @@ public:
   /*****************************************************************************
   */
   static std::vector<unsigned int> rankFMTOutput(
-    const std::vector<double>& snr,
-    const std::vector<double>& fahm,
-    const std::vector<double>& pd,
+    const std::span<const double> snr,
+    const std::span<const double> fahm,
+    const std::span<const double> pd,
     const unsigned int& method,
     const unsigned int& magnification_size,
     const double& pd_threshold)
@@ -3599,7 +3600,7 @@ public:
     if (method == 0)
     {
       /* What are the criteria for ranking angles? */
-      std::vector<double> criteria = pd;
+      std::vector<double> criteria(pd.begin(), pd.end());
 
       /* Identify maximum criterion */
       [[maybe_unused]] double max_c = *std::max_element(criteria.begin(), criteria.end());
@@ -3612,7 +3613,7 @@ public:
     if (method == 1)
     {
       /* What are the criteria for ranking angles? */
-      std::vector<double> criteria = pd;
+      std::vector<double> criteria(pd.begin(), pd.end());
 
       /* Identify maximum criterion */
       double max_c = *std::max_element(criteria.begin(), criteria.end());
@@ -3628,7 +3629,7 @@ public:
     if (method == 2)
     {
       /* What are the criteria for ranking angles? */
-      std::vector<double> criteria = pd;
+      std::vector<double> criteria(pd.begin(), pd.end());
 
       /* Identify maximum criterion */
       double max_c = *std::max_element(criteria.begin(), criteria.end());
@@ -3647,7 +3648,7 @@ public:
     if (method == 3)
     {
       /* What are the criteria for ranking angles? */
-      std::vector<double> criteria = pd;
+      std::vector<double> criteria(pd.begin(), pd.end());
 
       /* Identify maximum criterion */
       int max_c_idx =
@@ -3725,9 +3726,9 @@ class Match
   /*****************************************************************************
   */
   static bool canGiveNoMore(
-    const std::vector<double>& xs,
-    const std::vector<double>& ys,
-    const std::vector<double>& ts,
+    const std::span<const double> xs,
+    const std::span<const double> ys,
+    const std::span<const double> ts,
     const double& xy_eps,
     const double& t_eps)
   {
@@ -3761,7 +3762,7 @@ class Match
   /*****************************************************************************
   */
   static MatchOutput fmtdbh(
-    const std::vector< double >& real_scan,
+    const std::span<const double> real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const fftw_plan& r2rp, const fftw_plan& c2rp,
