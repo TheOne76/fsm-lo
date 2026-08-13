@@ -4,40 +4,16 @@ Recorded during the ROS 2 port. None of these blocks the package; all were left
 alone deliberately, and the reason is given so that the decision can be
 revisited rather than rediscovered.
 
-## Infinite and not-a-number ranges are not handled
+## An unmeasurable range is treated as no reading, but nothing is clamped
 
-A `LaserScan` may report a ray that struck nothing as infinity, or an invalid
-reading as not-a-number. This package handles neither. Only a range of exactly
-zero is recognised as invalid and filled in; anything else is fed to the
-matcher as though it were a real distance.
+Infinity, not-a-number, zero and any negative range are all taken to mean the
+sensor could not measure that ray, and are filled in from the rays either side.
+A scan with nothing valid in it is refused.
 
-An infinity entering the frequency transform contaminates every coefficient, so
-a single such ray ruins the match for that scan pair.
-
-This was not fixed during the port because doing so changes behaviour, and the
-port's purpose was to demonstrate that behaviour had not changed. It should be
-fixed next, together with a decision about what an infinite range means: treat
-it as invalid and fill it in, or clamp it to `range_max`.
-
-## The transform library plans a transform on every call
-
-Three of the transform utilities create an FFTW plan, use it once, and destroy
-it, on every call. Plans are expensive to create, and under the default
-`FFTW_MEASURE` the creation runs timing trials.
-
-Two consequences: execution time is far higher than it needs to be, and plan
-choice can vary between calls, which is why the comparison build switches to
-`FFTW_ESTIMATE`.
-
-The node already caches the two plans it uses directly. The remaining three
-should be cached the same way. Left alone during the port because caching them
-changes which plan is used, and therefore the numbers.
-
-## The default orientation bound differs between code and configuration
-
-`t_bound` defaults to π/4, that is 0.785398, in the code, and to 0.786 in
-`config/params.yaml`. The difference is small but neither value is obviously
-intended, and a user reading one will not get the other.
+What is still open is whether a ray that reports `range_max` exactly, which
+some drivers use to mean "nothing within range" rather than "a surface at
+exactly this distance", should be treated the same way. It currently is not.
+Deciding that needs a survey of what drivers actually do.
 
 ## The core header is duplicated in the `fsm` repository
 
