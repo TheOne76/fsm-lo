@@ -367,8 +367,17 @@ void Interface::setInitialPose(
 {
   geometry_msgs::msg::PoseWithCovarianceStamped message;
 
+  /*
+   * The listener is a throwaway node rather than this one. Waiting on a
+   * subscription belonging to a node an executor is already spinning puts that
+   * subscription into two wait sets at once, which throws and takes the whole
+   * process down.
+   */
+  const auto listener = std::make_shared<rclcpp::Node>(
+    std::string(get_name()) + "_initial_pose_listener");
+
   const bool arrived = rclcpp::wait_for_message(
-    message, shared_from_this(), initial_pose_topic_, initial_pose_timeout_);
+    message, listener, initial_pose_topic_, initial_pose_timeout_);
 
   if (!arrived)
   {

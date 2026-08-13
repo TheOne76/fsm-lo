@@ -114,6 +114,19 @@ if(BUILD_TESTING)
   ament_add_gtest(test_fsm_lo_core_golden
     test/test_core_golden.cpp)
 
+  find_package(launch_testing_ament_cmake REQUIRED)
+
+  # The launch runner imports a test file directly rather than through pytest,
+  # so the directory holding the shared helpers has to be on the import path
+  # for it. Setting it here keeps the test files free of path manipulation.
+  #
+  # The startup contract needs a node nothing has touched, so it launches its
+  # own rather than sharing the one the behaviour tests drive.
+  add_launch_test(test/test_node_startup.py TIMEOUT 300
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test)
+  add_launch_test(test/test_node_behaviour.py TIMEOUT 400
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test)
+
   foreach(test_target test_fsm_lo_core test_fsm_lo_core_golden)
     if(TARGET ${test_target})
       target_link_libraries(${test_target} fsm_lo_core)
