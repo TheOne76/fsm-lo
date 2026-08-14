@@ -46,13 +46,43 @@ no behavioural gain. Every other check `ament_lint_common` provides is on.
 The matcher falls back on a randomly seeded search when a match goes badly.
 `rng_seed` pins it so a run can be reproduced within one build, and there is a
 unit test for that, but the cross version comparison deliberately never
-exercises it: the synthetic motion is small enough that recovery never fires,
-which the harness asserts.
+exercises it: the synthetic motion is small enough that recovery never fires.
 
 The reason is that the standard library does not specify how a distribution
 turns random bits into a number, so two implementations may differ even from
 the same seed. Comparing the recovery path across versions would first need
 that conversion written out explicitly rather than taken from the library.
+
+## The comparison harness does not assert that recovery stayed quiet
+
+Because recovery cannot reproduce across builds, a comparison run in which it
+fired would be meaningless, and the harness is supposed to fail rather than
+report a difference it cannot explain. It does not check.
+
+The node now reports the count truthfully and logs a warning whenever a match
+needed recovery, so the evidence exists in the run output on the ROS 2 side; no
+warning appears in any of the six scenarios. What is missing is the harness
+reading it and failing on it, on both sides.
+
+The reason it was left is cost against benefit. Closing it properly means
+adding the same reporting to the ROS 1 reference build, which means rebuilding
+the pinned container and regenerating every reference recording, disturbing a
+proof that currently passes. The six scenarios agree to better than 4e-15,
+which is itself strong evidence that the random path never fired on either
+side, since it could not have agreed to that precision if it had.
+
+## The recovery seed exists on the port branch only
+
+`rng_seed` was meant to be threaded through on the correction branch as well,
+so that both sides of the comparison could pin the recovery search. It reached
+only the port branch. The correction branch still seeds from hardware entropy
+with no way to pin it.
+
+This changes nothing about the reference recordings, which were captured from a
+build where recovery never fired, so the seed would have had nothing to
+influence. Adding it now would invalidate a working reference for no gain. It
+matters only if the recovery path is ever compared across versions, which the
+entry above already says needs other work first.
 
 ## Deeper modernisation of the core was not attempted
 
