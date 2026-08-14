@@ -34,6 +34,18 @@ namespace fsm_lo
 namespace
 {
 
+rclcpp::QoS scanQos(const std::string& reliability, int depth)
+{
+  rclcpp::QoS qos(static_cast<std::size_t>(depth));
+
+  if (reliability == "best_effort")
+    qos.best_effort();
+  else
+    qos.reliable();
+
+  return qos;
+}
+
 double yawOf(const geometry_msgs::msg::Quaternion& orientation)
 {
   const tf2::Quaternion quaternion(
@@ -45,18 +57,6 @@ double yawOf(const geometry_msgs::msg::Quaternion& orientation)
   tf2::Matrix3x3(quaternion).getRPY(roll, pitch, yaw);
 
   return FSM::Utils::wrapAngle(yaw);
-}
-
-rclcpp::QoS scanQos(const std::string& reliability, int depth)
-{
-  rclcpp::QoS qos(static_cast<std::size_t>(depth));
-
-  if (reliability == "best_effort")
-    qos.best_effort();
-  else
-    qos.reliable();
-
-  return qos;
 }
 
 }  // namespace
