@@ -15,6 +15,53 @@ some drivers use to mean "nothing within range" rather than "a surface at
 exactly this distance", should be treated the same way. It currently is not.
 Deciding that needs a survey of what drivers actually do.
 
+## The ray search can report a wall standing behind the nearest one
+
+Two implementations of ray casting sit side by side. One checks every wall
+segment for every ray. The other narrows the search to a window around the
+segment the previous ray met, a scan being continuous, and is the one that
+runs.
+
+In a room whose walls all turn the same way the two agree exactly, from any
+pose and at any orientation. In a room with a corner that turns back on itself
+the segment a ray meets stops advancing with the ray, and the narrowed search
+can settle for a wall that stands behind the nearest one.
+
+It is reproducible: the polygon with vertices (-4,-2.5), (0,-3.5), (4,-2.5),
+(4,2.5), (1,1), (-1,2.5), (-4,2.5), a pose at (-2,1) turned to -2.2 radians,
+and 90 rays. Four of the ninety disagree with the exhaustive search, the worst
+by 3.86 metres.
+
+Rooms of that shape are ordinary. Left alone because correcting it moves the
+numbers, which the port exists to show have not moved. `test_geometry.cpp`
+pins the agreement in rooms where it holds, so a correction would be visible.
+
+## The intersection of an oblique ray and a wall is good to about 1e-9
+
+A ray is represented by a point a hundred million metres along it, and where
+that ray meets a wall perpendicular to the x-axis the height is worked out by
+subtracting two quantities of that size. Almost all of it cancels, and about
+eight of the sixteen digits go with it.
+
+The remaining accuracy is a few parts in a thousand million, which is the same
+order as the tolerance the cross version comparison is held to. It does not
+threaten that comparison, both versions computing it the same way, but it does
+bound how accurately any single scan can be matched, and it is not obvious from
+reading the code.
+
+The fix is to compute the height from the ray's own gradient rather than from
+the far point, which is one line and changes the numbers.
+
+## Gap filling never returns for a scan in which nothing was measured
+
+Given a scan whose every reading is missing, the gap filling appends a list of
+indices to itself while walking that same list, and allocates until the process
+is killed.
+
+Nothing reaches it: the matcher refuses a scan with nothing valid in it before
+gap filling is called, and `test_scan_handling.cpp` holds that guard in place.
+The function on its own is still unsafe for any other caller.
+
 ## The core header is duplicated in the `fsm` repository
 
 `include/fsm_lo/fsm_core.hpp` and `include/fsm.h` in

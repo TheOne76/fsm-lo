@@ -114,8 +114,23 @@ if(BUILD_TESTING)
   ament_add_gtest(test_fsm_lo_core_golden
     test/test_core_golden.cpp)
 
+  ament_add_gtest(test_fsm_lo_dft
+    test/test_dft.cpp)
+
+  ament_add_gtest(test_fsm_lo_geometry
+    test/test_geometry.cpp)
+
   ament_add_gtest(test_fsm_lo_invalid_ranges
     test/test_invalid_ranges.cpp)
+
+  ament_add_gtest(test_fsm_lo_params
+    test/test_params.cpp)
+
+  ament_add_gtest(test_fsm_lo_scan_handling
+    test/test_scan_handling.cpp)
+
+  ament_add_gtest(test_fsm_lo_stages
+    test/test_stages.cpp)
 
   find_package(launch_testing_ament_cmake REQUIRED)
 
@@ -131,7 +146,9 @@ if(BUILD_TESTING)
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test)
 
   foreach(test_target test_fsm_lo_core test_fsm_lo_core_golden
-                      test_fsm_lo_invalid_ranges)
+                      test_fsm_lo_dft test_fsm_lo_geometry
+                      test_fsm_lo_invalid_ranges test_fsm_lo_params
+                      test_fsm_lo_scan_handling test_fsm_lo_stages)
     if(TARGET ${test_target})
       target_link_libraries(${test_target} fsm_lo_core)
       target_compile_options(${test_target} PRIVATE
