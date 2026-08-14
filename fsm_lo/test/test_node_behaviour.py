@@ -138,12 +138,6 @@ class TestNodeBehaviour(unittest.TestCase):
         self.assertEqual(len(self.harness.paths[-1].poses), 1,
                          'the path was not emptied')
 
-    def test_set_initial_pose_reports_failure_when_nothing_is_published(self):
-        response = self.harness.call('set_initial_pose', timeout=30.0)
-
-        self.assertFalse(response.success)
-        self.assertIn('initial_pose', response.message)
-
     def test_output_is_stamped_from_the_scan_that_produced_it(self):
         self.harness.call('start')
         self.harness.clear()
@@ -209,7 +203,6 @@ class TestNodeBehaviour(unittest.TestCase):
             'rng_seed': 0,
             'scan_qos_reliability': 'reliable',
             'scan_qos_depth': 1,
-            'initial_pose_timeout': 5,
         }
 
         client = self.harness.create_client(

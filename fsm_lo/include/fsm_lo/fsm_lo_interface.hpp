@@ -105,8 +105,6 @@ private:
   std::string base_frame_id_;
   std::string lo_frame_id_;
 
-  std::chrono::seconds initial_pose_timeout_{5};
-
   rclcpp::Time previous_stamp_{0, 0, RCL_ROS_TIME};
   bool locked_{true};
 };

@@ -82,8 +82,6 @@ Interface::Interface(const rclcpp::NodeOptions& options)
   base_frame_id_ = get_parameter("base_frame_id").as_string();
   lo_frame_id_ = get_parameter("lo_frame_id").as_string();
   initial_pose_topic_ = get_parameter("initial_pose_topic").as_string();
-  initial_pose_timeout_ =
-    std::chrono::seconds(get_parameter("initial_pose_timeout").as_int());
 
   odometry_publisher_ = create_publisher<nav_msgs::msg::Odometry>(
     get_parameter("lo_topic").as_string(), 1);
@@ -185,7 +183,6 @@ void Interface::declareParameters()
 
   declare_parameter("scan_qos_reliability", "reliable");
   declare_parameter("scan_qos_depth", 1);
-  declare_parameter("initial_pose_timeout", 5);
 }
 
 /*******************************************************************************
@@ -388,14 +385,13 @@ void Interface::setInitialPose(
   const auto listener = std::make_shared<rclcpp::Node>(
     std::string(get_name()) + "_initial_pose_listener");
 
-  const bool arrived = rclcpp::wait_for_message(
-    message, listener, initial_pose_topic_, initial_pose_timeout_);
+  const bool arrived =
+    rclcpp::wait_for_message(message, listener, initial_pose_topic_);
 
   if (!arrived)
   {
     response->success = false;
-    response->message = "no message on " + initial_pose_topic_ + " within "
-      + std::to_string(initial_pose_timeout_.count()) + "s";
+    response->message = "no message on " + initial_pose_topic_;
     RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
     return;
   }

@@ -63,4 +63,3 @@
     scan_qos_depth:       1
 
     # How long set_initial_pose waits for a message before giving up, seconds
-    initial_pose_timeout: 5

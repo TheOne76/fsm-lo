@@ -128,7 +128,7 @@ All four take `std_srvs/srv/Trigger` and return a success flag and a message.
 | Service                             | Utility                                                                                                                                                          |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `fsm_lo/clear_estimated_trajectory` | clears the vector of estimated poses and returns the accumulated pose to the origin                                                                              |
-| `fsm_lo/set_initial_pose`           | node waits for one message on `initial_pose_topic`, sets fsm's initial pose from it, and returns. Fails with a message if nothing arrives within the timeout      |
+| `fsm_lo/set_initial_pose`           | node waits for one message on `initial_pose_topic`, sets fsm's initial pose from it, and returns. Waits for as long as it takes      |
 | `fsm_lo/start`                      | commences node functionality                                                                                                                                     |
 | `fsm_lo/stop`                       | halts node functionality (node remains alive)                                                                                                                    |
 
@@ -168,7 +168,6 @@ Frame ids carry no leading slash. tf2 rejects them.
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |:-------------:|
 | `scan_qos_reliability` | `reliable` or `best_effort`. Sensor drivers commonly publish `best_effort`, and a mismatched subscription receives nothing | `reliable`    |
 | `scan_qos_depth`       | subscription queue depth                                                                                                   | 1             |
-| `initial_pose_timeout` | how long `set_initial_pose` waits for a message before giving up, in seconds                                               | 5             |
 
 A parameter outside its permitted range is refused at start-up with an explanation, rather than tripping an assertion that release builds compile away.
 
