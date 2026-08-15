@@ -15,26 +15,19 @@ some drivers use to mean "nothing within range" rather than "a surface at
 exactly this distance", should be treated the same way. It currently is not.
 Deciding that needs a survey of what drivers actually do.
 
-## The ray search can report a wall standing behind the nearest one
+## Two core functions are reachable from nothing
 
-Two implementations of ray casting sit side by side. One checks every wall
-segment for every ray. The other narrows the search to a window around the
-segment the previous ray met, a scan being continuous, and is the one that
-runs.
+`completeScan5` and `generatePoseWithinMap` are defined in the core header and
+called from nowhere: not from the matcher, not from the wrapper, not from a
+test. `findExact` is reached only by the tests, where it is the slow and
+obvious answer the two selectable ray searches are held to, which is a
+deliberate role rather than an oversight.
 
-In a room whose walls all turn the same way the two agree exactly, from any
-pose and at any orientation. In a room with a corner that turns back on itself
-the segment a ray meets stops advancing with the ray, and the narrowed search
-can settle for a wall that stands behind the nearest one.
-
-It is reproducible: the polygon with vertices (-4,-2.5), (0,-3.5), (4,-2.5),
-(4,2.5), (1,1), (-1,2.5), (-4,2.5), a pose at (-2,1) turned to -2.2 radians,
-and 90 rays. Four of the ninety disagree with the exhaustive search, the worst
-by 3.86 metres.
-
-Rooms of that shape are ordinary. Left alone because correcting it moves the
-numbers, which the port exists to show have not moved. `test_geometry.cpp`
-pins the agreement in rooms where it holds, so a correction would be visible.
+No inventory of this has been taken. What that needs is a build with
+`-ffunction-sections -Wl,--gc-sections` and a list of what survives linking,
+compared against what the header defines. Until that exists the coverage gap is
+silent rather than visible, and dead code is being read and maintained as
+though it ran.
 
 ## The intersection of an oblique ray and a wall is good to about 1e-9
 
@@ -75,8 +68,9 @@ have drifted apart. Differences found while porting:
 - One index variable that selects the best candidate has a different type in
   each copy, which can select a different candidate.
 
-Only this copy received the eight corrections listed in the readme. The `fsm`
-copy still carries all of them.
+Only this copy received the eight corrections listed in the readme, and only
+this copy has the angular ray search. The `fsm` copy still carries all eight
+defects and the windowed search alone.
 
 Reconciling the two is worth doing and is a job in itself. It was explicitly
 out of scope for the port.
@@ -130,15 +124,3 @@ build where recovery never fired, so the seed would have had nothing to
 influence. Adding it now would invalidate a working reference for no gain. It
 matters only if the recovery path is ever compared across versions, which the
 entry above already says needs other work first.
-
-## Deeper modernisation of the core was not attempted
-
-The core builds clean as C++23 and its warnings are gone, but it is still
-written in the style of 2016: triples of doubles rather than a named pose type,
-output parameters rather than return values, raw owning pointers around the
-transform buffers, and classes of static functions where namespaces would do.
-
-The groundwork for changing that is in place. `test/test_core_golden.cpp`
-compares the core against numbers captured from the reference build using
-nothing but numeric fixtures, so it can gate every step of such a rewrite
-without ROS or containers.
