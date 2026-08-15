@@ -179,17 +179,6 @@ struct TranslationCorrection
 };
 /* ========================================================================== */
 /*
- * Where one ray met the polygon, and the index of the segment it met. The
- * index is what the next ray starts its own search from, a scan being
- * continuous.
- */
-struct RayHit
-{
-  std::pair<double,double> intersection_point;
-  int start_segment_id{0};
-};
-/* ========================================================================== */
-/*
  * One scan of a recorded dataset: the ranges and the pose they were taken
  * from.
  */
@@ -455,6 +444,29 @@ class X
   }
 
   /*****************************************************************************
+   * Where every ray of a scan taken from `pose` meets the walls `lines`.
+   *
+   * A ray can only meet a wall that stands across its direction, so each wall
+   * is offered to the rays whose angle falls inside the arc that wall subtends
+   * at the pose, and to no others. The rays are evenly spaced and their angles
+   * are known before any of them is cast, so that arc converts straight into a
+   * range of ray indices with no search involved. Walking the walls once then
+   * costs about as many segment tests as there are crossings to be found,
+   * rather than one test per wall per ray.
+   *
+   * The answer is the answer testing every wall against every ray gives.
+   * Nothing that could be hit is excluded: the arc is widened by one ray index
+   * at each end so a ray passing exactly through a corner cannot fall through
+   * the gap, and a wall subtending half a turn or standing on the pose, which
+   * is a pose lying on the wall itself, is offered to every ray.
+   *
+   * This replaced a search narrowed to a window around the segment the
+   * previous ray met. That window follows the rays only where the walls turn
+   * one way. Across a corner that turns back on itself the segment a ray meets
+   * stops advancing with the ray, the window stops following, and the nearest
+   * hit inside it can be a wall standing behind the nearest one there is. The
+   * range handed on is then too long, by metres in a room of ordinary size,
+   * and nothing downstream can tell.
    */
   static std::vector< std::pair<double,double> > findExact2(
     const Pose& pose,
@@ -466,117 +478,120 @@ class X
       std::chrono::high_resolution_clock::now();
 #endif
 
-    double px = pose.x;
+    const double px = pose.x;
     const double py = pose.y;
     const double pt = pose.t;
 
-    std::vector< std::pair<double,double> > intersections;
     const double mul = 100000000.0;
+    const int rays = static_cast<int>(num_rays);
 
-
-    int start0 = 0;
-    int end0 = lines.size();
+    std::vector<double> x_far(num_rays);
+    std::vector<double> y_far(num_rays);
+    std::vector<double> tan_t_ray(num_rays);
+    std::vector<char> tan_peligro(num_rays);
 
     for (std::size_t i = 0; i < num_rays; i++)
     {
       double t_ray = i * 2*M_PI / num_rays + pt - M_PI;
       t_ray = fmod(t_ray + 5*M_PI, 2*M_PI) - M_PI;
 
-      const double x_far = px + mul*cos(t_ray);
-      double y_far = py + mul*sin(t_ray);
-
-
-      double tan_t_ray = tan(t_ray);
-      bool tan_peligro = false;
+      x_far[i] = px + mul*cos(t_ray);
+      y_far[i] = py + mul*sin(t_ray);
+      tan_t_ray[i] = tan(t_ray);
       /* if (fabs(fabs(t_ray) - M_PI/2) == 0.0) */
-      if (fabs(fabs(t_ray) - M_PI/2) < 0.0001)
-        tan_peligro = true;
+      tan_peligro[i] = fabs(fabs(t_ray) - M_PI/2) < 0.0001;
+    }
 
+    /*
+     * The nearest crossing each ray has met so far, as a squared distance. The
+     * starting value is the hundred million this search has always begun from,
+     * so a crossing further off than ten thousand metres is not believed and a
+     * ray that meets only those counts as having met nothing.
+     */
+    const double unreached = 100000000.0;
+    std::vector<double> min_r(num_rays, unreached);
+    std::vector< std::pair<double,double> > intersections(num_rays);
 
-      std::pair<double,double> intersection_point;
-      int segment_id = 0;
-      bool success = false;
-      const int inc = std::max<int>(1, lines.size()/16);
+    /*
+     * Ray i leaves at i * 2*pi/num_rays + pose orientation - pi, so an angle
+     * becomes the index of the ray carrying it by inverting that. Indices are
+     * kept unwrapped through the arithmetic and folded into range at the last
+     * moment, which is what lets an arc straddling the back of the scan be one
+     * interval rather than two.
+     */
+    const double index_per_radian = num_rays / (2*M_PI);
+
+    for (std::size_t l = 0; l < lines.size(); l++)
+    {
+      const std::pair<double,double>& p_1 = lines[l];
+      const std::pair<double,double>& p_2 = lines[(l+1) % lines.size()];
+
+      const double a_1 = atan2(p_1.second - py, p_1.first - px);
+      const double a_2 = atan2(p_2.second - py, p_2.first - px);
+
+      /* A wall subtends less than half a turn at any point off it, so the
+       * short way round between its ends is the arc it covers. */
+      const double span =
+        (fmod(a_2 - a_1 + 5*M_PI, 2*M_PI) - M_PI) * index_per_radian;
+
+      const double from = (a_1 - pt + M_PI) * index_per_radian;
 
       /*
-       * Start off with the first ray. Scan the whole `lines` vector and find
-       * the index of the segment the first ray hits. This index becomes the
-       * starting index from which the second ray shall start searching. The last
-       * segment the second ray shall end at is defined by `inc`. And do this
-       * for all rays.
-       * IF there is no intersection between [start, start+inc] then start from
-       * start+inc and go up to start+2inc... and do this until you find a hit.
+       * Half a turn, or a corner sitting exactly on the pose, means the pose
+       * is on the wall. The arc is then the whole scan or is not defined at
+       * all, and the wall has to be put to every ray.
        */
-      /*
-       * The window is widened until the ray hits something. Bound the widening
-       * by the number of segments there are: without a bound, a ray that hits
-       * nothing widens the window until start0 overflows, after which the
-       * search indexes the segment vector with a negative number and the
-       * process dies. A ray can fail to hit when the pose has wandered outside
-       * the polygon, or when a run of equal ranges has made a stretch of it
-       * collinear.
-       */
-      const int max_widenings = static_cast<int>(lines.size()) / inc + 2;
-      int widenings = 0;
+      const bool pose_on_wall =
+        fabs(span) >= 0.5*rays - 1.0
+        || (p_1.first == px && p_1.second == py)
+        || (p_2.first == px && p_2.second == py);
 
-      while (!success && widenings < max_widenings)
+      const int first = pose_on_wall
+        ? 0
+        : static_cast<int>(std::floor(std::min(from, from + span))) - 1;
+
+      const int last = pose_on_wall
+        ? rays - 1
+        : static_cast<int>(std::ceil(std::max(from, from + span))) + 1;
+
+      for (int j = first; j <= last; j++)
       {
-        const std::optional<RayHit> hit =
-          findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
-            start0, end0, tan_peligro);
+        const int i = ((j % rays) + rays) % rays;
 
-        success = hit.has_value();
+        const std::optional< std::pair<double,double> > meeting =
+          rayMeetsSegment(px,py, tan_t_ray[i], x_far[i],y_far[i],
+            p_1, p_2, tan_peligro[i]);
 
-        if (success)
+        if (!meeting.has_value())
+          continue;
+
+        const double dx = meeting->first - px;
+        const double dy = meeting->second - py;
+        const double r = dx*dx+dy*dy;
+
+        if (r < min_r[i])
         {
-          intersection_point = hit->intersection_point;
-          segment_id = hit->start_segment_id;
-          start0 = segment_id;
-        }
-        else
-          start0 += inc;
-
-        end0 = start0 + inc;
-        widenings++;
-      }
-
-      /* Widening found nothing, so look at every segment once */
-      if (!success)
-      {
-        start0 = 0;
-        end0 = static_cast<int>(lines.size());
-
-        const std::optional<RayHit> hit =
-          findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
-            start0, end0, tan_peligro);
-
-        success = hit.has_value();
-
-        if (success)
-        {
-          intersection_point = hit->intersection_point;
-          segment_id = hit->start_segment_id;
-          start0 = segment_id;
-          end0 = start0 + inc;
+          min_r[i] = r;
+          intersections[i] = *meeting;
         }
       }
+    }
 
-      /*
-       * The ray genuinely hits nothing. A scan is continuous, so the nearest
-       * thing to the truth is what the previous ray saw; for the first ray
-       * there is nothing better than the pose itself.
-       */
-      if (!success)
-      {
-        intersection_point = intersections.empty()
-          ? std::make_pair(px, py)
-          : intersections.back();
+    /*
+     * A ray that met nothing. A scan is continuous, so the nearest thing to
+     * the truth is what the previous ray saw; for the first ray there is
+     * nothing better than the pose itself. A ray can meet nothing when the
+     * pose has wandered outside the polygon, or when a run of equal ranges has
+     * made a stretch of it collinear.
+     */
+    for (std::size_t i = 0; i < num_rays; i++)
+    {
+      if (min_r[i] < unreached)
+        continue;
 
-        start0 = 0;
-        end0 = static_cast<int>(lines.size());
-      }
-
-      intersections.push_back(intersection_point);
+      intersections[i] = i == 0
+        ? std::make_pair(px, py)
+        : intersections[i-1];
     }
 
 #ifdef FSM_LO_TRACE
@@ -593,122 +608,88 @@ class X
   }
 
   /*****************************************************************************
+   * Where one ray meets one wall, if it meets it at all.
+   *
+   * The ray is handed over as the point it leaves from and a second point a
+   * hundred million metres along it, which turns the question into whether two
+   * line segments cross. Four determinants settle that. The crossing itself is
+   * then where two lines meet, written three ways because a wall perpendicular
+   * to the x-axis has no gradient and a ray pointing along the y-axis has no
+   * finite one.
    */
-  static std::optional<RayHit> findExactOneRay(
+  static std::optional< std::pair<double,double> > rayMeetsSegment(
     const double& px, const double& py, const double& tan_t_ray,
     const double& x_far, const double& y_far,
-    const std::vector< std::pair<double, double> >& lines,
-    const int& start_search_id, const int& end_search_id,
+    const std::pair<double, double>& p_1, const std::pair<double, double>& p_2,
     const bool& tan_peligro)
   {
-    std::vector< std::pair<double,double> > candidate_points;
-    std::vector<int> candidate_start_segment_ids;
+    const double det_1 =
+      (p_1.first-px)*(p_2.second-py)-
+      (p_2.first-px)*(p_1.second-py);
 
-    for (int l = start_search_id; l < end_search_id; l++)
+    const double det_2 =
+      (p_1.first-x_far)*(p_2.second-y_far)-
+      (p_2.first-x_far)*(p_1.second-y_far);
+
+    if (det_1 * det_2 <= 0.0)
     {
-      /* The index of the first sensed point */
-      int idx_1 = l;
+      const double det_3 =
+        (px-p_1.first)*(y_far-p_1.second)-
+        (x_far-p_1.first)*(py-p_1.second);
 
-      /* The index of the second sensed point (in counter-clockwise order) */
-      int idx_2 = idx_1 + 1;
+      const double det_4 =
+        (px-p_2.first)*(y_far-p_2.second)-
+        (x_far-p_2.first)*(py-p_2.second);
 
-      if (idx_2 >= static_cast<int>(lines.size()))
-        idx_2 = fmod(idx_2, lines.size());
-
-      if (idx_1 >= static_cast<int>(lines.size()))
-        idx_1 = fmod(idx_1, lines.size());
-
-      const double det_1 =
-        (lines[idx_1].first-px)*(lines[idx_2].second-py)-
-        (lines[idx_2].first-px)*(lines[idx_1].second-py);
-
-      const double det_2 =
-        (lines[idx_1].first-x_far)*(lines[idx_2].second-y_far)-
-        (lines[idx_2].first-x_far)*(lines[idx_1].second-y_far);
-
-      if (det_1 * det_2 <= 0.0)
+      if (det_3 * det_4 <= 0.0)
       {
-        const double det_3 =
-          (px-lines[idx_1].first)*(y_far-lines[idx_1].second)-
-          (x_far-lines[idx_1].first)*(py-lines[idx_1].second);
+        /* They intersect! */
 
-        const double det_4 =
-          (px-lines[idx_2].first)*(y_far-lines[idx_2].second)-
-          (x_far-lines[idx_2].first)*(py-lines[idx_2].second);
+        double x = 0.0;
+        double y = 0.0;
 
-        if (det_3 * det_4 <= 0.0)
+        const double ttp_x = p_2.first - p_1.first;
+        const double ttp_y = p_2.second - p_1.second;
+
+        /* The line segment is perpendicular to the x-axis */
+        if (ttp_x == 0.0)
         {
-          /* They intersect! */
-
-          double x = 0.0;
-          double y = 0.0;
-
-          const double ttp_x = lines[idx_2].first - lines[idx_1].first;
-          const double ttp_y = lines[idx_2].second - lines[idx_1].second;
-
-          /* The line segment is perpendicular to the x-axis */
-          if (ttp_x == 0.0)
+          /* The ray is parallel to the x-axis */
+          if (x_far == px)
           {
-            /* The ray is parallel to the x-axis */
-            if (x_far == px)
-            {
-              x = lines[idx_1].first;
-              y = py;
-            }
-            else
-            {
-              x = lines[idx_1].first;
-              y = y_far + (y_far - py)/(x_far - px) * (x - x_far);
-            }
+            x = p_1.first;
+            y = py;
           }
           else
           {
-            double tan_two_points = ttp_y / ttp_x;
-
-            if (!tan_peligro)
-            {
-              x = (py - lines[idx_1].second + tan_two_points * lines[idx_1].first
-                -tan_t_ray * px) / (tan_two_points - tan_t_ray);
-
-              y = py + tan_t_ray * (x - px);
-            }
-            else
-            {
-              x = px;
-              y = lines[idx_1].second + tan_two_points * (x - lines[idx_1].first);
-              /* y = (lines[idx_2].second + lines[idx_1].second)/2; */
-            }
+            x = p_1.first;
+            y = y_far + (y_far - py)/(x_far - px) * (x - x_far);
           }
-
-          candidate_points.push_back(std::make_pair(x,y));
-          candidate_start_segment_ids.push_back(idx_1);
         }
+        else
+        {
+          const double tan_two_points = ttp_y / ttp_x;
+
+          if (!tan_peligro)
+          {
+            x = (py - p_1.second + tan_two_points * p_1.first
+              -tan_t_ray * px) / (tan_two_points - tan_t_ray);
+
+            y = py + tan_t_ray * (x - px);
+          }
+          else
+          {
+            x = px;
+            y = p_1.second + tan_two_points * (x - p_1.first);
+            /* y = (p_2.second + p_1.second)/2; */
+          }
+        }
+
+        return std::make_pair(x,y);
       }
     }
 
-    double min_r = 100000000.0;
-    int idx = -1;
-    for (std::size_t c = 0; c < candidate_points.size(); c++)
-    {
-      const double dx = candidate_points[c].first - px;
-      const double dy = candidate_points[c].second - py;
-      double r = dx*dx+dy*dy;
-
-      if (r < min_r)
-      {
-        min_r = r;
-        idx = c;
-      }
-    }
-
-    if (idx >= 0)
-    {
-      return RayHit{
-        std::make_pair(candidate_points[idx].first, candidate_points[idx].second),
-        candidate_start_segment_ids[idx]};
-    }
-    else
-      return std::nullopt;
+    return std::nullopt;
   }
 };
 

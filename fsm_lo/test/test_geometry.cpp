@@ -38,6 +38,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -187,32 +188,117 @@ TEST(Geometry, TurningThePoseByOneRayShiftsTheIntersections)
 }
 
 /*
- * Two implementations of the same thing live side by side: one walks every
- * segment for every ray, the other narrows the search using the segment the
- * previous ray met. Only the second runs.
+ * Two implementations of the same thing live side by side, and only the first
+ * runs. The second walks every segment for every ray and is slow, obvious and
+ * used here as the answer the first is held to.
  *
  * In a room whose walls turn only one way they agree exactly, from anywhere
- * inside and at any orientation. In a room with a corner that turns back on
- * itself they do not always, because the segment a ray meets stops advancing
- * with the ray, and the narrowed search can settle for a wall that stands
- * behind the nearest one. That is recorded as known and unfixed rather than
- * asserted here, since fixing it would move the numbers.
+ * inside and at any orientation.
  */
-TEST(Geometry, TheWindowedSearchAgreesWithTheExhaustiveOneInAConvexRoom)
+TEST(Geometry, TheRaySearchAgreesWithTheExhaustiveOneInAConvexRoom)
 {
   const Room room = rectangle(4.0, 2.5);
 
   for (const FSM::Pose& pose : {FSM::Pose{}, FSM::Pose{1.5, -0.5, 0.7},
       FSM::Pose{-2.0, 1.0, -2.2}, FSM::Pose{3.9, 2.4, 3.0}})
   {
-    const std::vector<Point> windowed = FSM::X::findExact2(pose, room, 90);
+    const std::vector<Point> hits = FSM::X::find(pose, room, 90);
     const std::vector<Point> exhaustive = FSM::X::findExact(pose, room, 90);
 
-    ASSERT_EQ(windowed.size(), exhaustive.size());
-    for (std::size_t i = 0; i < windowed.size(); i++)
-      expectPoint(windowed[i], exhaustive[i].first, exhaustive[i].second,
+    ASSERT_EQ(hits.size(), exhaustive.size());
+    for (std::size_t i = 0; i < hits.size(); i++)
+      expectPoint(hits[i], exhaustive[i].first, exhaustive[i].second,
         "ray " + std::to_string(i));
   }
+}
+
+/*
+ * And in a room with a corner that turns back on itself they must agree too.
+ *
+ * This is the case a search narrowed to the neighbourhood of the segment the
+ * previous ray met gets wrong. Across a reflex corner the segment a ray meets
+ * stops advancing with the ray, the window stops following it, and the search
+ * settles for a wall standing behind the nearest one. A range too long by
+ * metres is then handed to the matcher as a measurement.
+ *
+ * The room below is a rectangle with a wedge pushed down into it from the top
+ * wall and a shallow point in the floor. From the pose named here four of the
+ * ninety rays cross the wedge.
+ */
+TEST(Geometry, TheRaySearchFindsTheNearestWallInAConcaveRoom)
+{
+  const Room room{
+    {-4.0, -2.5}, {0.0, -3.5}, {4.0, -2.5}, {4.0, 2.5},
+    {1.0, 1.0}, {-1.0, 2.5}, {-4.0, 2.5}};
+
+  for (const FSM::Pose& pose : {FSM::Pose{-2.0, 1.0, -2.2},
+      FSM::Pose{}, FSM::Pose{2.5, -1.0, 1.3}, FSM::Pose{-3.0, -1.5, 2.9}})
+  {
+    const std::vector<Point> hits = FSM::X::find(pose, room, 90);
+    const std::vector<Point> exhaustive = FSM::X::findExact(pose, room, 90);
+
+    ASSERT_EQ(hits.size(), exhaustive.size());
+    for (std::size_t i = 0; i < hits.size(); i++)
+      expectPoint(hits[i], exhaustive[i].first, exhaustive[i].second,
+        "ray " + std::to_string(i));
+  }
+}
+
+/*
+ * Two rooms chosen by hand say little about a search that has to hold for
+ * every shape a scan can trace out. This puts a thousand of them to it.
+ *
+ * The rooms are rings of sixty points at wildly varying distances from a
+ * centre, which is the shape a scan of a cluttered room has and which is
+ * dense in corners that turn back on themselves. The poses sit near the
+ * centre, where they stay inside the ring whatever the radii come out as, and
+ * face in every direction.
+ *
+ * The bar is exact equality, not nearness. Both searches put the same
+ * arithmetic to the same walls in the same order, so the only thing that can
+ * separate them is one of them missing a wall the other saw.
+ */
+TEST(Geometry, TheRaySearchMatchesTheExhaustiveOneOverManyRandomRooms)
+{
+  std::mt19937 generator(20260814);
+  std::uniform_real_distribution<double> radius(0.8, 6.0);
+  std::uniform_real_distribution<double> offset(-0.4, 0.4);
+  std::uniform_real_distribution<double> orientation(-M_PI, M_PI);
+
+  std::size_t compared = 0;
+
+  for (int room_number = 0; room_number < 100; room_number++)
+  {
+    Room room;
+    for (int corner = 0; corner < 60; corner++)
+    {
+      const double angle = corner * 2 * M_PI / 60;
+      const double r = radius(generator);
+      room.push_back({r * std::cos(angle), r * std::sin(angle)});
+    }
+
+    for (int attempt = 0; attempt < 10; attempt++)
+    {
+      const FSM::Pose pose{offset(generator), offset(generator),
+        orientation(generator)};
+
+      const std::vector<Point> hits = FSM::X::find(pose, room, 90);
+      const std::vector<Point> exhaustive = FSM::X::findExact(pose, room, 90);
+
+      ASSERT_EQ(hits.size(), exhaustive.size());
+      for (std::size_t i = 0; i < hits.size(); i++)
+      {
+        ASSERT_EQ(hits[i].first, exhaustive[i].first)
+          << "room " << room_number << ", pose " << attempt << ", ray " << i;
+        ASSERT_EQ(hits[i].second, exhaustive[i].second)
+          << "room " << room_number << ", pose " << attempt << ", ray " << i;
+      }
+
+      compared += hits.size();
+    }
+  }
+
+  EXPECT_EQ(compared, 90000u);
 }
 
 /*
