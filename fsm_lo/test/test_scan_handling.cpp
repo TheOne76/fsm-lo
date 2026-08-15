@@ -178,9 +178,11 @@ TEST(ScanHandling, SubsamplingProducesTheRequestedNumberOfRays)
 {
   const std::vector<double> scan = uniformScan(360, kC);
 
-  EXPECT_EQ(FSM::Utils::subsampleScan(scan, 360).size(), 360u);
-  EXPECT_EQ(FSM::Utils::subsampleScan(scan, 180).size(), 180u);
-  EXPECT_EQ(FSM::Utils::subsampleScan(scan, 90).size(), 90u);
+  const FSM::RaySearch angular = FSM::RaySearch::angular;
+
+  EXPECT_EQ(FSM::Utils::subsampleScan(scan, 360, angular).size(), 360u);
+  EXPECT_EQ(FSM::Utils::subsampleScan(scan, 180, angular).size(), 180u);
+  EXPECT_EQ(FSM::Utils::subsampleScan(scan, 90, angular).size(), 90u);
 }
 
 /*
@@ -192,7 +194,8 @@ TEST(ScanHandling, SubsamplingProducesTheRequestedNumberOfRays)
 TEST(ScanHandling, SubsamplingByAWholeFactorKeepsTheRangesExactly)
 {
   const std::vector<double> scan = uniformScan(360, kC);
-  const std::vector<double> smaller = FSM::Utils::subsampleScan(scan, 90);
+  const std::vector<double> smaller =
+    FSM::Utils::subsampleScan(scan, 90, FSM::RaySearch::angular);
 
   ASSERT_EQ(smaller.size(), 90u);
   for (std::size_t i = 0; i < smaller.size(); i++)
@@ -208,7 +211,8 @@ TEST(ScanHandling, SubsamplingByAWholeFactorKeepsTheRangesExactly)
 TEST(ScanHandling, SubsamplingByAFractionFallsShortAndNeverLong)
 {
   const std::vector<double> scan = uniformScan(360, kC);
-  const std::vector<double> smaller = FSM::Utils::subsampleScan(scan, 100);
+  const std::vector<double> smaller =
+    FSM::Utils::subsampleScan(scan, 100, FSM::RaySearch::angular);
 
   ASSERT_EQ(smaller.size(), 100u);
 

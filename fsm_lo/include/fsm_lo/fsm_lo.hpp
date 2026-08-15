@@ -58,6 +58,14 @@ struct Parameters
   /** Zero draws from hardware entropy, as the algorithm has always done. Any
    *  other value pins the recovery search so a run can be reproduced. */
   unsigned int rng_seed{0};
+
+  /** How each ray of a scan is matched to the wall it meets, either
+   *  "angular" or "windowed". The first returns the nearest wall in front of
+   *  every ray whatever shape the room is, and costs time in proportion to the
+   *  ray count. The second is what this algorithm shipped with: it costs time
+   *  in proportion to the square of the ray count, and where a room turns back
+   *  on itself it can return a wall standing behind the nearest one. */
+  std::string ray_search{"angular"};
 };
 
 /**

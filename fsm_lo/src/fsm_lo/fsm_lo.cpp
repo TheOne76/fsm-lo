@@ -43,6 +43,9 @@ FSM::input_params asInputParams(const Parameters& parameters)
   ip.max_magnification_size = parameters.max_magnification_size;
   ip.max_recoveries = parameters.max_recoveries;
   ip.rng_seed = parameters.rng_seed;
+  ip.ray_search = parameters.ray_search == "windowed"
+    ? FSM::RaySearch::windowed
+    : FSM::RaySearch::angular;
   return ip;
 }
 
@@ -93,6 +96,10 @@ std::string validate(const Parameters& parameters)
   if (parameters.max_magnification_size < parameters.min_magnification_size)
     return "max_magnification_size must not be smaller than "
       "min_magnification_size";
+
+  if (parameters.ray_search != "angular" && parameters.ray_search != "windowed")
+    return "ray_search must be \"angular\" or \"windowed\", got \""
+      + parameters.ray_search + "\"";
 
   return {};
 }
@@ -146,8 +153,11 @@ Matcher::process(std::span<const double> ranges)
   if (std::ranges::none_of(scan, isValidRange))
     return std::unexpected(MatchError::scan_entirely_invalid);
 
+  const FSM::input_params input_parameters = asInputParams(parameters_);
+
   scan = FSM::DatasetUtils::interpolateRanges(scan);
-  scan = FSM::Utils::subsampleScan(scan, parameters_.size_scan);
+  scan = FSM::Utils::subsampleScan(scan, parameters_.size_scan,
+    input_parameters.ray_search);
 
   scans_seen_++;
 
@@ -163,8 +173,7 @@ Matcher::process(std::span<const double> ranges)
     FSM::Utils::scan2points(reference_scan_, origin);
 
   const FSM::MatchOutput match = FSM::Match::fmtdbh(scan, origin,
-    reference_points, forward_plan_, inverse_plan_,
-    asInputParams(parameters_));
+    reference_points, forward_plan_, inverse_plan_, input_parameters);
 
   accumulated_ = FSM::Utils::computeTransform(match.pose, accumulated_);
   trajectory_.push_back(accumulatedPose());

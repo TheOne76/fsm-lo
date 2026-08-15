@@ -163,6 +163,25 @@ Frame ids carry no leading slash. tf2 rejects them.
 | `max_counter`            | Lower values decrease execution time                                                                              | 200           |
 | `max_recoveries`         | Lower values decrease execution time                                                                              | 10            |
 | `rng_seed`               | 0 draws the recovery search from hardware entropy, as always. Any other value pins it so a run can be reproduced  | 0             |
+| `ray_search`             | `angular` or `windowed`. How each ray is matched to the wall it meets; see below                                   | `angular`     |
+
+`ray_search` picks between two ways of finding the wall each ray of a scan
+meets.
+
+`angular` offers each wall only to the rays that can reach it. It returns the
+nearest wall in front of every ray whatever shape the room is, and its
+execution time rises in step with `size_scan`.
+
+`windowed` narrows the search for each ray to the neighbourhood of the wall the
+previous ray met. It is what this algorithm shipped with, and it is kept so
+that a run can be compared against results published before `angular` existed.
+Its execution time rises with the square of `size_scan`, and where a room turns
+back on itself it can return a wall standing behind the nearest one.
+
+Measured over 13908 matches drawn from a recorded dataset at `size_scan: 360`,
+`angular` completes a match in 17.9 ms against `windowed`'s 25.4 ms, median.
+The two disagree on 0.67% of matches, by a median of 3.5 mm. At `size_scan:
+1440` the ray casting alone is 3.2 times faster, and at 5760, 12.4 times.
 
 | Node parameters        | Description                                                                                                                | Default value |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |:-------------:|

@@ -190,6 +190,34 @@ TEST(ParameterValidation, ForbiddingRecoveryIsAllowed)
 }
 
 /*
+ * Both ray searches are accepted by name, and nothing else is. A misspelling
+ * must refuse startup rather than fall back to a default, because the two
+ * searches disagree about what a room with a re-entrant corner looks like and
+ * a run made with the wrong one would look ordinary.
+ */
+TEST(ParameterValidation, EitherRaySearchIsAcceptedByName)
+{
+  fsm_lo::Parameters parameters;
+
+  parameters.ray_search = "angular";
+  EXPECT_EQ(fsm_lo::validate(parameters), std::string{});
+
+  parameters.ray_search = "windowed";
+  EXPECT_EQ(fsm_lo::validate(parameters), std::string{});
+}
+
+TEST(ParameterValidation, AnUnknownRaySearchIsRefused)
+{
+  fsm_lo::Parameters parameters;
+  parameters.ray_search = "Angular";
+
+  const std::string problem = fsm_lo::validate(parameters);
+
+  EXPECT_TRUE(mentions(problem, "ray_search")) << problem;
+  EXPECT_TRUE(mentions(problem, "Angular")) << problem;
+}
+
+/*
  * Only the first problem is reported. Somebody fixing a configuration file
  * wants one thing to fix at a time, and the check stops at the first, so a
  * file with two mistakes names the earlier one.

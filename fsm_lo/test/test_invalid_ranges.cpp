@@ -203,6 +203,7 @@ TEST(RecoverySeed, TheSameSeedProducesTheSameSequence)
     {
       const FSM::Pose pose =
         FSM::Utils::generatePose(base, map, 0.2, 0.3, 0.0,
+          FSM::RaySearch::angular,
           i == 0 ? seed : 0).value();
       drawn.push_back(pose.x);
       drawn.push_back(pose.y);

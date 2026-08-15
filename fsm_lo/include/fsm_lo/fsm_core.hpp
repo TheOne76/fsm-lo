@@ -179,6 +179,17 @@ struct TranslationCorrection
 };
 /* ========================================================================== */
 /*
+ * Where one ray met the polygon, and the index of the segment it met. The
+ * index is what the next ray starts its own search from, in the windowed
+ * search, a scan being continuous.
+ */
+struct RayHit
+{
+  std::pair<double,double> intersection_point;
+  int start_segment_id{0};
+};
+/* ========================================================================== */
+/*
  * One scan of a recorded dataset: the ranges and the pose they were taken
  * from.
  */
@@ -209,6 +220,26 @@ struct CompletedScan
   Pose map_origin;
 };
 /* ========================================================================== */
+/*
+ * Which way each ray of a scan is matched to the wall it meets.
+ *
+ * `angular` offers each wall only to the rays whose angle can reach it. It
+ * returns the nearest wall in front of every ray whatever shape the room is,
+ * and costs time in proportion to the ray count.
+ *
+ * `windowed` narrows the search for each ray to the neighbourhood of the
+ * segment the previous ray met, widening it until something is hit. It is what
+ * this algorithm shipped with. It costs time in proportion to the square of
+ * the ray count, and where a room turns back on itself it can hand back a wall
+ * standing behind the nearest one. It is kept so that a run can be compared
+ * against everything published before the angular search existed.
+ */
+enum class RaySearch
+{
+  angular,
+  windowed
+};
+/* ========================================================================== */
 struct input_params
 {
   unsigned int num_iterations;
@@ -222,6 +253,8 @@ struct input_params
   /* Zero draws the recovery search from hardware entropy, as this algorithm
    * has always done. Any other value pins it so a run can be reproduced. */
   unsigned int rng_seed;
+
+  RaySearch ray_search{RaySearch::angular};
 };
 /* ========================================================================== */
 struct output_params
@@ -284,9 +317,12 @@ class X
   static std::vector< std::pair<double,double> > find(
     const Pose& pose,
     const std::vector< std::pair<double, double> >& lines,
-    const unsigned int& num_rays)
+    const unsigned int& num_rays,
+    const RaySearch ray_search)
   {
-    return findExact2(pose, lines, num_rays);
+    return ray_search == RaySearch::windowed
+      ? findExactWindowed(pose, lines, num_rays)
+      : findExactAngular(pose, lines, num_rays);
   }
 
   /*****************************************************************************
@@ -460,15 +496,9 @@ class X
    * the gap, and a wall subtending half a turn or standing on the pose, which
    * is a pose lying on the wall itself, is offered to every ray.
    *
-   * This replaced a search narrowed to a window around the segment the
-   * previous ray met. That window follows the rays only where the walls turn
-   * one way. Across a corner that turns back on itself the segment a ray meets
-   * stops advancing with the ray, the window stops following, and the nearest
-   * hit inside it can be a wall standing behind the nearest one there is. The
-   * range handed on is then too long, by metres in a room of ordinary size,
-   * and nothing downstream can tell.
+   * This is the default, and `findExactWindowed` is the alternative.
    */
-  static std::vector< std::pair<double,double> > findExact2(
+  static std::vector< std::pair<double,double> > findExactAngular(
     const Pose& pose,
     const std::vector< std::pair<double, double> >& lines,
     const unsigned int& num_rays)
@@ -601,7 +631,200 @@ class X
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [X::findExact]\n", elapsed.count());
+    printf("%f [X::findExactAngular]\n", elapsed.count());
+#endif
+
+    return intersections;
+  }
+
+  /*****************************************************************************
+   * The nearest wall one ray meets among the segments [start, end), and which
+   * segment that was. Nothing, if it meets none of them.
+   */
+  static std::optional<RayHit> findExactOneRay(
+    const double& px, const double& py, const double& tan_t_ray,
+    const double& x_far, const double& y_far,
+    const std::vector< std::pair<double, double> >& lines,
+    const int& start_search_id, const int& end_search_id,
+    const bool& tan_peligro)
+  {
+    double min_r = 100000000.0;
+    std::optional<RayHit> nearest;
+
+    for (int l = start_search_id; l < end_search_id; l++)
+    {
+      /* The index of the first sensed point */
+      int idx_1 = l;
+
+      /* The index of the second sensed point (in counter-clockwise order) */
+      int idx_2 = idx_1 + 1;
+
+      if (idx_2 >= static_cast<int>(lines.size()))
+        idx_2 = fmod(idx_2, lines.size());
+
+      if (idx_1 >= static_cast<int>(lines.size()))
+        idx_1 = fmod(idx_1, lines.size());
+
+      const std::optional< std::pair<double,double> > meeting =
+        rayMeetsSegment(px,py,tan_t_ray, x_far,y_far,
+          lines[idx_1], lines[idx_2], tan_peligro);
+
+      if (!meeting.has_value())
+        continue;
+
+      const double dx = meeting->first - px;
+      const double dy = meeting->second - py;
+      const double r = dx*dx+dy*dy;
+
+      if (r < min_r)
+      {
+        min_r = r;
+        nearest = RayHit{*meeting, idx_1};
+      }
+    }
+
+    return nearest;
+  }
+
+  /*****************************************************************************
+   * Where every ray of a scan taken from `pose` meets the walls `lines`, found
+   * by narrowing the search for each ray to the neighbourhood of the segment
+   * the previous ray met.
+   *
+   * A scan is continuous, so consecutive rays tend to meet neighbouring
+   * segments, and a window a sixteenth of the room wide usually holds the
+   * answer. Where it does not the window is widened until something is hit,
+   * and failing that every segment is looked at once.
+   *
+   * That reasoning holds only where the walls turn one way. Across a corner
+   * that turns back on itself the segment a ray meets stops advancing with the
+   * ray, the window stops following it, and the nearest hit inside the window
+   * can be a wall standing behind the nearest one there is. The range handed
+   * on is then too long, by metres in a room of ordinary size, and nothing
+   * downstream can tell.
+   *
+   * A window a fixed fraction of the room wide also grows as the room does,
+   * and the room has as many walls as the scan has rays, so the cost of this
+   * rises with the square of the ray count where `findExactAngular` rises in
+   * step with it.
+   *
+   * It is kept, and selectable, because every result this algorithm published
+   * before the angular search existed was produced by it.
+   */
+  static std::vector< std::pair<double,double> > findExactWindowed(
+    const Pose& pose,
+    const std::vector< std::pair<double, double> >& lines,
+    const unsigned int& num_rays)
+  {
+#ifdef FSM_LO_TRACE
+    std::chrono::high_resolution_clock::time_point a =
+      std::chrono::high_resolution_clock::now();
+#endif
+
+    const double px = pose.x;
+    const double py = pose.y;
+    const double pt = pose.t;
+
+    std::vector< std::pair<double,double> > intersections;
+    const double mul = 100000000.0;
+
+    int start0 = 0;
+    int end0 = lines.size();
+
+    for (std::size_t i = 0; i < num_rays; i++)
+    {
+      double t_ray = i * 2*M_PI / num_rays + pt - M_PI;
+      t_ray = fmod(t_ray + 5*M_PI, 2*M_PI) - M_PI;
+
+      const double x_far = px + mul*cos(t_ray);
+      const double y_far = py + mul*sin(t_ray);
+
+      const double tan_t_ray = tan(t_ray);
+      /* if (fabs(fabs(t_ray) - M_PI/2) == 0.0) */
+      const bool tan_peligro = fabs(fabs(t_ray) - M_PI/2) < 0.0001;
+
+      std::pair<double,double> intersection_point;
+      bool success = false;
+      const int inc = std::max<int>(1, lines.size()/16);
+
+      /*
+       * The window is widened until the ray hits something. Bound the widening
+       * by the number of segments there are: without a bound, a ray that hits
+       * nothing widens the window until start0 overflows, after which the
+       * search indexes the segment vector with a negative number and the
+       * process dies. A ray can fail to hit when the pose has wandered outside
+       * the polygon, or when a run of equal ranges has made a stretch of it
+       * collinear.
+       */
+      const int max_widenings = static_cast<int>(lines.size()) / inc + 2;
+      int widenings = 0;
+
+      while (!success && widenings < max_widenings)
+      {
+        const std::optional<RayHit> hit =
+          findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
+            start0, end0, tan_peligro);
+
+        success = hit.has_value();
+
+        if (success)
+        {
+          intersection_point = hit->intersection_point;
+          start0 = hit->start_segment_id;
+        }
+        else
+          start0 += inc;
+
+        end0 = start0 + inc;
+        widenings++;
+      }
+
+      /* Widening found nothing, so look at every segment once */
+      if (!success)
+      {
+        start0 = 0;
+        end0 = static_cast<int>(lines.size());
+
+        const std::optional<RayHit> hit =
+          findExactOneRay(px,py,tan_t_ray, x_far,y_far,lines,
+            start0, end0, tan_peligro);
+
+        success = hit.has_value();
+
+        if (success)
+        {
+          intersection_point = hit->intersection_point;
+          start0 = hit->start_segment_id;
+          end0 = start0 + inc;
+        }
+      }
+
+      /*
+       * The ray genuinely hits nothing. A scan is continuous, so the nearest
+       * thing to the truth is what the previous ray saw; for the first ray
+       * there is nothing better than the pose itself.
+       */
+      if (!success)
+      {
+        intersection_point = intersections.empty()
+          ? std::make_pair(px, py)
+          : intersections.back();
+
+        start0 = 0;
+        end0 = static_cast<int>(lines.size());
+      }
+
+      intersections.push_back(intersection_point);
+    }
+
+#ifdef FSM_LO_TRACE
+    std::chrono::high_resolution_clock::time_point b =
+      std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed =
+      std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
+
+    printf("%f [X::findExactWindowed]\n", elapsed.count());
 #endif
 
     return intersections;
@@ -835,6 +1058,7 @@ class Utils
     const Pose& base_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& dxy, const double& dt, const double& dist_threshold,
+    const RaySearch ray_search,
     const unsigned int seed = 0)
   {
     assert(dxy >= 0.0);
@@ -889,7 +1113,7 @@ class Utils
 
     /* Verify distance threshold */
     const std::vector< std::pair<double,double> > intersections =
-      X::find(real_pose_ass, map, map.size());
+      X::find(real_pose_ass, map, map.size(), ray_search);
     const std::vector<double> real_scan =
       points2scan(intersections, real_pose_ass);
 
@@ -906,7 +1130,8 @@ class Utils
   */
   static std::optional<Pose> generatePoseWithinMap(
     const std::vector< std::pair<double,double> >& map,
-    const double& dist_threshold)
+    const double& dist_threshold,
+    const RaySearch ray_search)
   {
     /* A temp real pose */
     Pose real_pose_ass;
@@ -982,7 +1207,7 @@ class Utils
 
     /* Verify distance threshold */
     const std::vector< std::pair<double,double> > intersections =
-      X::find(real_pose_ass, map, map.size());
+      X::find(real_pose_ass, map, map.size(), ray_search);
     const std::vector<double> real_scan =
       points2scan(intersections, real_pose_ass);
 
@@ -1270,10 +1495,11 @@ class Utils
   static std::vector<double> scanFromPose(
     const Pose& pose,
     const std::vector< std::pair<double,double> >& points,
-    const unsigned int& num_rays)
+    const unsigned int& num_rays,
+    const RaySearch ray_search)
   {
     const std::vector< std::pair<double,double> > intersections =
-      X::find(pose, points, num_rays);
+      X::find(pose, points, num_rays, ray_search);
 
     return points2scan(intersections, pose);
   }
@@ -1288,7 +1514,8 @@ class Utils
   /*****************************************************************************
   */
   static std::vector<double>
-  subsampleScan(const std::span<const double> scan_in, const size_t& sz)
+  subsampleScan(const std::span<const double> scan_in, const size_t& sz,
+    const RaySearch ray_search)
   {
     Pose zero_pose;
     zero_pose.x = 0.0;
@@ -1301,7 +1528,7 @@ class Utils
 
     /* scan_out: the ranges to `scan_points` from `zero_pose` */
     const std::vector<double> scan_out =
-      scanFromPose(zero_pose, scan_points, sz);
+      scanFromPose(zero_pose, scan_points, sz, ray_search);
 
     return scan_out;
   }
@@ -2057,7 +2284,8 @@ class ScanCompletion
   static CompletedScan completeScan5(
     const Pose& pose,
     const std::span<const double> scan_in,
-    const unsigned int& num_rays)
+    const unsigned int& num_rays,
+    const RaySearch ray_search)
   {
     const std::vector< std::pair<double,double> > scan_points =
       Utils::scan2points(scan_in, pose, M_PI);
@@ -2074,7 +2302,8 @@ class ScanCompletion
       do pose_within_points = Utils::generatePose(pose, 0.05, 0.0);
       while(!Utils::isPositionInMap(pose_within_points, scan_points));
 
-      completed.map = X::find(pose_within_points, scan_points, num_rays);
+      completed.map =
+        X::find(pose_within_points, scan_points, num_rays, ray_search);
 
       is_farther_than =
         Utils::isPositionFartherThan(pose_within_points, completed.map,
@@ -2729,7 +2958,8 @@ class Translation
     const int& max_iterations,
     [[maybe_unused]] const double& dist_bound,
     const bool& pick_min,
-    const fftw_plan& r2rp)
+    const fftw_plan& r2rp,
+    const RaySearch ray_search)
   {
 #ifdef FSM_LO_TRACE
     printf("input pose  (%f,%f,%f) [Translation::tff]\n",
@@ -2778,7 +3008,7 @@ class Translation
        * the map.
        */
       const std::vector< std::pair<double,double> > virtual_scan_intersections =
-        X::find(current_pose, map, real_scan.size());
+        X::find(current_pose, map, real_scan.size(), ray_search);
 
       std::chrono::high_resolution_clock::time_point int_end =
         std::chrono::high_resolution_clock::now();
@@ -2996,13 +3226,15 @@ public:
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
     const std::string& batch_or_sequential,
-    const fftw_plan& r2rp, const fftw_plan& c2rp)
+    const fftw_plan& r2rp, const fftw_plan& c2rp,
+    const RaySearch ray_search)
   {
     if (batch_or_sequential.compare("batch") == 0)
       return fmt2Batch(real_scan, virtual_pose, map, magnification_size,
-        r2rp, c2rp);
+        r2rp, c2rp, ray_search);
     else if (batch_or_sequential.compare("sequential") == 0)
-      return fmt2Sequential(real_scan, virtual_pose, map, magnification_size);
+      return fmt2Sequential(real_scan, virtual_pose, map, magnification_size,
+        ray_search);
     else
     {
       printf("[Rotation::fmt] Use 'batch' or 'sequential' instead \n");
@@ -3331,7 +3563,8 @@ public:
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
     const unsigned int& magnification_size,
-    const fftw_plan& r2rp, const fftw_plan& c2rp)
+    const fftw_plan& r2rp, const fftw_plan& c2rp,
+    const RaySearch ray_search)
   {
 #ifdef FSM_LO_TRACE
     printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
@@ -3356,7 +3589,7 @@ public:
       std::chrono::high_resolution_clock::now();
 
     const std::vector< std::pair<double,double> > virtual_scan_points =
-      X::find(virtual_pose, map, virtual_scan_size_max);
+      X::find(virtual_pose, map, virtual_scan_size_max, ray_search);
 
     std::chrono::high_resolution_clock::time_point int_end =
       std::chrono::high_resolution_clock::now();
@@ -3454,7 +3687,8 @@ public:
     const std::span<const double> real_scan,
     const Pose& virtual_pose,
     const std::vector< std::pair<double,double> >& map,
-    const unsigned int& magnification_size)
+    const unsigned int& magnification_size,
+    const RaySearch ray_search)
   {
 #ifdef FSM_LO_TRACE
     printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
@@ -3479,7 +3713,7 @@ public:
       std::chrono::high_resolution_clock::now();
 
     const std::vector< std::pair<double,double> > virtual_scan_points =
-      X::find(virtual_pose, map, virtual_scan_size_max);
+      X::find(virtual_pose, map, virtual_scan_size_max, ray_search);
 
     std::chrono::high_resolution_clock::time_point int_end =
       std::chrono::high_resolution_clock::now();
@@ -3827,7 +4061,8 @@ class Match
 #endif
 
       const RotationOutput rotation_output = Rotation::fmt(real_scan,
-        *result_pose, map, current_magnification_size, "batch", r2rp, c2rp);
+        *result_pose, map, current_magnification_size, "batch", r2rp, c2rp,
+        ip.ray_search);
 
       const std::vector<double>& rc0 = rotation_output.rc0;
       const std::vector<double>& rc1 = rotation_output.rc1;
@@ -3878,7 +4113,7 @@ class Match
 
           const TranslationOutput translation_output =
             Translation::tff(real_scan, cand_pose, map,
-              ni, ip.xy_bound, false, r2rp);
+              ni, ip.xy_bound, false, r2rp, ip.ray_search);
 
           const double tc = translation_output.criterion;
           tr_i = translation_output.iterations;
@@ -3947,7 +4182,8 @@ class Match
 #endif
 
       const TranslationOutput translation_output = Translation::tff(real_scan,
-        *result_pose, map, num_iterations, ip.xy_bound, true, r2rp);
+        *result_pose, map, num_iterations, ip.xy_bound, true, r2rp,
+        ip.ray_search);
 
       const double trans_criterion = translation_output.criterion;
       tr_iterations = translation_output.iterations;
@@ -4026,7 +4262,7 @@ class Match
 
         num_recoveries++;
         *result_pose = l2recovery(virtual_pose, map, ip.xy_bound, ip.t_bound,
-          ip.rng_seed);
+          ip.ray_search, ip.rng_seed);
 
         counter = min_counter;
         current_magnification_size = min_magnification_size;
@@ -4075,6 +4311,7 @@ class Match
     const Pose& input_pose,
     const std::vector< std::pair<double,double> >& map,
     const double& xy_bound, const double& t_bound,
+    const RaySearch ray_search,
     const unsigned int seed = 0)
   {
 #ifdef FSM_LO_TRACE
@@ -4086,7 +4323,7 @@ class Match
 
     std::optional<Pose> output_pose;
     while (!(output_pose = Utils::generatePose(input_pose, map,
-        1*xy_bound, t_bound, 0.0, seed)));
+        1*xy_bound, t_bound, 0.0, ray_search, seed)));
 
     return *output_pose;
   }

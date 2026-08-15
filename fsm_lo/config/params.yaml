@@ -53,6 +53,20 @@
     # always done. Any other value pins it so that a run can be reproduced.
     rng_seed: 0
 
+    # How each ray of a scan is matched to the wall it meets.
+    #
+    # "angular" offers each wall only to the rays that can reach it. It returns
+    # the nearest wall in front of every ray whatever shape the room is, and
+    # its execution time rises in step with size_scan.
+    #
+    # "windowed" narrows the search for each ray to the neighbourhood of the
+    # wall the previous ray met. It is what this algorithm shipped with, and it
+    # is kept so that a run can be compared against results published before
+    # "angular" existed. Its execution time rises with the square of size_scan,
+    # and where a room turns back on itself it can return a wall standing
+    # behind the nearest one.
+    ray_search: "angular"
+
     # --------------------------------------------------------------------------
     # Node behaviour
     # --------------------------------------------------------------------------
@@ -61,5 +75,3 @@
     # receives nothing at all.
     scan_qos_reliability: "reliable"
     scan_qos_depth:       1
-
-    # How long set_initial_pose waits for a message before giving up, seconds

@@ -149,7 +149,7 @@ TEST(RotationStage, RecoversATurnToTheResolutionItHas)
     {
       const FSM::RotationOutput output = FSM::Rotation::fmt(scans[s],
         FSM::Pose{}, mapOf(scans[s - 1]), magnification, "batch", forward,
-        inverse);
+        inverse, FSM::RaySearch::angular);
 
       ASSERT_FALSE(output.angles.empty())
         << "pair " << s << " at magnification " << magnification;
@@ -184,9 +184,9 @@ TEST(RotationStage, MagnificationDoesNotMakeTheAnswerWorse)
     const std::vector<std::pair<double, double>> map = mapOf(scans[s - 1]);
 
     const FSM::RotationOutput coarse = FSM::Rotation::fmt(scans[s], FSM::Pose{},
-      map, 0, "batch", forward, inverse);
+      map, 0, "batch", forward, inverse, FSM::RaySearch::angular);
     const FSM::RotationOutput fine = FSM::Rotation::fmt(scans[s], FSM::Pose{},
-      map, 3, "batch", forward, inverse);
+      map, 3, "batch", forward, inverse, FSM::RaySearch::angular);
 
     ASSERT_FALSE(coarse.angles.empty());
     ASSERT_FALSE(fine.angles.empty());
@@ -215,7 +215,7 @@ TEST(RotationStage, FindsNoTurnWhereThereIsNone)
     {
       const FSM::RotationOutput output = FSM::Rotation::fmt(scans[s],
         FSM::Pose{}, mapOf(scans[s - 1]), magnification, "batch", forward,
-        inverse);
+        inverse, FSM::RaySearch::angular);
 
       ASSERT_FALSE(output.angles.empty());
       EXPECT_NEAR(closestTo(output.angles, 0.0), 0.0, 1e-12)
@@ -241,7 +241,8 @@ TEST(TranslationStage, RecoversAMoveGivenEnoughIterations)
   for (std::size_t s = 1; s < scans.size(); s++)
   {
     const FSM::TranslationOutput output = FSM::Translation::tff(scans[s],
-      FSM::Pose{}, mapOf(scans[s - 1]), 32, 0.2, true, forward);
+      FSM::Pose{}, mapOf(scans[s - 1]), 32, 0.2, true, forward,
+      FSM::RaySearch::angular);
 
     EXPECT_NEAR(output.pose.x, truth[s].x - truth[s - 1].x, 1e-3)
       << "pair " << s << ", along the direction of travel";
@@ -270,9 +271,9 @@ TEST(TranslationStage, MoreIterationsDoNotMakeTheAnswerWorse)
     const double expected = truth[s].x - truth[s - 1].x;
 
     const FSM::TranslationOutput few = FSM::Translation::tff(scans[s],
-      FSM::Pose{}, map, 4, 0.2, true, forward);
+      FSM::Pose{}, map, 4, 0.2, true, forward, FSM::RaySearch::angular);
     const FSM::TranslationOutput many = FSM::Translation::tff(scans[s],
-      FSM::Pose{}, map, 32, 0.2, true, forward);
+      FSM::Pose{}, map, 32, 0.2, true, forward, FSM::RaySearch::angular);
 
     EXPECT_LE(std::fabs(many.pose.x - expected),
       std::fabs(few.pose.x - expected)) << "pair " << s;
@@ -299,7 +300,8 @@ TEST(TranslationStage, LeavesTheOrientationAsItFoundIt)
   {
     const FSM::Pose given{0.0, 0.0, orientation};
     const FSM::TranslationOutput output =
-      FSM::Translation::tff(scans[1], given, map, 8, 0.2, true, forward);
+      FSM::Translation::tff(scans[1], given, map, 8, 0.2, true, forward,
+        FSM::RaySearch::angular);
 
     EXPECT_DOUBLE_EQ(output.pose.t, orientation);
   }
@@ -321,7 +323,8 @@ TEST(TranslationStage, MistakesATurnForAMove)
   const fftw_plan forward = FSM::DFTUtils::forwardPlan(kSize);
 
   const FSM::TranslationOutput output = FSM::Translation::tff(scans[1],
-    FSM::Pose{}, mapOf(scans[0]), 32, 0.2, true, forward);
+    FSM::Pose{}, mapOf(scans[0]), 32, 0.2, true, forward,
+    FSM::RaySearch::angular);
 
   EXPECT_DOUBLE_EQ(truth[1].x, truth[0].x) << "the trajectory does not move";
   EXPECT_DOUBLE_EQ(truth[1].y, truth[0].y) << "the trajectory does not move";

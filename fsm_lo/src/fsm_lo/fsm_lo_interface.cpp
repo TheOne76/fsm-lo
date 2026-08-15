@@ -180,6 +180,7 @@ void Interface::declareParameters()
   declare_parameter("max_counter", 200);
   declare_parameter("max_recoveries", 10);
   declare_parameter("rng_seed", 0);
+  declare_parameter("ray_search", "angular");
 
   declare_parameter("scan_qos_reliability", "reliable");
   declare_parameter("scan_qos_depth", 1);
@@ -287,6 +288,7 @@ Parameters Interface::readParameters()
     static_cast<unsigned int>(get_parameter("max_recoveries").as_int());
   parameters.rng_seed =
     static_cast<unsigned int>(get_parameter("rng_seed").as_int());
+  parameters.ray_search = get_parameter("ray_search").as_string();
   return parameters;
 }
 
