@@ -184,7 +184,7 @@ void Interface::declareParameters()
   declare_parameter("base_frame_id", "base_laser_link");
   declare_parameter("lo_frame_id", "lo");
 
-  declare_parameter("size_scan", 360);
+  declare_parameter("size_scan", 0);
   declare_parameter("min_magnification_size", 0);
   declare_parameter("max_magnification_size", 3);
   declare_parameter("num_iterations", 2);
@@ -361,6 +361,24 @@ void Interface::scanCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr scan)
 
   RCLCPP_INFO(get_logger(), "FSM executed in %.1f ms",
     1000.0 * result->execution_time);
+
+  /*
+   * Execution time rises faster than the ray count does, so a scan matched at
+   * a high resolution can take longer than the sensor takes to produce the
+   * next one. Every scan arriving while this one is still being matched is
+   * dropped, the odometry thins out, and nothing so far says why. Say why, and
+   * name the setting that fixes it. Throttled, because a node that cannot keep
+   * up would otherwise say so on every scan it does manage.
+   */
+  if (result->execution_time > interval)
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
+      "A match takes %.0f ms but scans arrive every %.0f ms, so scans are "
+      "being dropped. Matching is at %zu rays; setting size_scan below that "
+      "matches fewer and takes less time over it.",
+      1000.0 * result->execution_time, 1000.0 * interval,
+      matcher_->matchSize());
+  }
 
   /*
    * Recovery draws a pose at random, so a match that needed it is not

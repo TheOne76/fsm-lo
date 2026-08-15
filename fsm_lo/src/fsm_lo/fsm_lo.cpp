@@ -83,9 +83,6 @@ void setDiagnosticSink(std::function<void(const std::string&)> sink)
 */
 std::string validate(const Parameters& parameters)
 {
-  if (parameters.size_scan == 0)
-    return "size_scan must be greater than zero";
-
   if (parameters.num_iterations == 0)
     return "num_iterations must be greater than zero";
 
@@ -115,8 +112,7 @@ std::string validate(const Parameters& parameters)
 */
 Matcher::Matcher(const Parameters& parameters)
 : parameters_(parameters),
-  forward_plan_(FSM::DFTUtils::forwardPlan(parameters.size_scan)),
-  inverse_plan_(FSM::DFTUtils::inversePlan(parameters.size_scan))
+  match_size_(parameters.size_scan)
 {
 }
 
@@ -162,8 +158,18 @@ Matcher::process(std::span<const double> ranges)
 
   const FSM::input_params input_parameters = asInputParams(parameters_);
 
+  /*
+   * Where no size was asked for, the first scan to arrive settles it. Two
+   * scans can only be matched against each other at one size, so once settled
+   * it holds for the session and a scan of a different length is resampled to
+   * it rather than refused: a driver that occasionally truncates a scan should
+   * cost one slightly coarser match, not a gap in the odometry.
+   */
+  if (match_size_ == 0)
+    match_size_ = scan.size();
+
   scan = FSM::DatasetUtils::interpolateRanges(scan);
-  scan = FSM::Utils::subsampleScan(scan, parameters_.size_scan,
+  scan = FSM::Utils::subsampleScan(scan, match_size_,
     input_parameters.ray_search);
 
   scans_seen_++;
@@ -179,8 +185,15 @@ Matcher::process(std::span<const double> ranges)
   const std::vector<std::pair<double, double>> reference_points =
     FSM::Utils::scan2points(reference_scan_, origin);
 
+  /*
+   * The plans are held by a cache that keeps them for the life of the process
+   * and hands back the same pair for the same size, so asking for them here
+   * rather than at construction costs a lookup and lets the size be settled by
+   * the first scan.
+   */
   const FSM::MatchOutput match = FSM::Match::fmtdbh(scan, origin,
-    reference_points, forward_plan_, inverse_plan_, input_parameters);
+    reference_points, FSM::DFTUtils::forwardPlan(match_size_),
+    FSM::DFTUtils::inversePlan(match_size_), input_parameters);
 
   accumulated_ = FSM::Utils::computeTransform(match.pose, accumulated_);
   trajectory_.push_back(accumulatedPose());

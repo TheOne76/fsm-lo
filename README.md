@@ -154,7 +154,7 @@ Frame ids carry no leading slash. tf2 rejects them.
 
 | FSM-specific parameters  | Description                                                                                                       | Default value |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |:-------------:|
-| `size_scan`              | the size of scans that are matched (execution time is proportional to scan size, hence subsampling may be needed) | 360           |
+| `size_scan`              | how many rays a scan is matched at; `0` matches every ray the scan carries, see below                             | 0             |
 | `min_magnification_size` | base angular oversampling                                                                                         | 0             |
 | `max_magnification_size` | maximum angular oversampling                                                                                      | 3             |
 | `num_iterations`         | Greater sensor velocity requires higher values                                                                    | 2             |
@@ -164,6 +164,14 @@ Frame ids carry no leading slash. tf2 rejects them.
 | `max_recoveries`         | Lower values decrease execution time                                                                              | 10            |
 | `rng_seed`               | 0 draws the recovery search from hardware entropy, as always. Any other value pins it so a run can be reproduced  | 0             |
 | `ray_search`             | `angular` or `windowed`. How each ray is matched to the wall it meets; see below                                   | `angular`     |
+
+`size_scan` decides how many rays a scan is matched at.
+
+`0`, the default, matches every ray the scan carries: the sensor's own resolution, with nothing discarded. The first scan to arrive settles the size for the session, since two scans can only be matched against each other at one size, and a later scan of a different length is resampled to it rather than dropped.
+
+Any other value reduces every scan to that many rays before matching, and refuses a scan that carries fewer. This is the setting to reach for when matching cannot keep up with the sensor. Execution time rises faster than the ray count does, so halving the rays buys back more than half the time.
+
+On a 1.70 GHz laptop core, a match takes 21 ms at 360 rays, 48 ms at 720, and 76 ms at 1081. Anything bought in the last few years is two to four times faster than that. If a match ever takes longer than the gap between scans the node says so, periodically, and names this setting.
 
 `ray_search` picks between two ways of finding the wall each ray of a scan
 meets.

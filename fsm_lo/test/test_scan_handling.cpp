@@ -171,6 +171,77 @@ TEST(ScanHandling, AScanWithNothingMeasuredNeverReachesGapFilling)
 }
 
 /*
+ * Nothing is discarded unless discarding was asked for. Where no size is
+ * configured the scan is matched at whatever resolution it arrives with, so a
+ * scan far shorter than the old fixed default of 360 is ordinary rather than
+ * refused.
+ */
+TEST(ScanHandling, AScanIsMatchedAtTheSizeItArrivesWith)
+{
+  fsm_lo::Parameters parameters;
+  parameters.size_scan = 0;
+
+  fsm_lo::Matcher matcher(parameters);
+
+  EXPECT_EQ(matcher.matchSize(), 0u) << "nothing has arrived to settle it";
+
+  const std::vector<double> first = uniformScan(90, kC);
+  const auto reference = matcher.process(first);
+
+  ASSERT_FALSE(reference.has_value());
+  EXPECT_EQ(reference.error(), fsm_lo::MatchError::no_reference_yet);
+  EXPECT_EQ(matcher.matchSize(), 90u);
+
+  const auto matched = matcher.process(uniformScan(90, kC));
+  EXPECT_TRUE(matched.has_value());
+}
+
+/*
+ * The size the first scan settles holds for the session, because a match
+ * compares two scans of one size or nothing. A later scan of a different
+ * length is resampled to it rather than thrown away: a driver that
+ * occasionally truncates a scan should cost one coarser match, not a gap in
+ * the odometry.
+ */
+TEST(ScanHandling, ALaterScanOfADifferentLengthIsResampledRatherThanRefused)
+{
+  fsm_lo::Parameters parameters;
+  parameters.size_scan = 0;
+
+  fsm_lo::Matcher matcher(parameters);
+
+  matcher.process(uniformScan(180, kC));
+  ASSERT_EQ(matcher.matchSize(), 180u);
+
+  const auto longer = matcher.process(uniformScan(720, kC));
+  EXPECT_TRUE(longer.has_value());
+  EXPECT_EQ(matcher.matchSize(), 180u) << "the size must not follow the scan";
+
+  const auto shorter = matcher.process(uniformScan(45, kC));
+  EXPECT_TRUE(shorter.has_value());
+  EXPECT_EQ(matcher.matchSize(), 180u);
+}
+
+/*
+ * Asking for a size is asking for scans of at least that size. A scan too
+ * short to be reduced to it is refused, as it always was, because filling in
+ * rays that were never measured is not the same as discarding rays that were.
+ */
+TEST(ScanHandling, AScanShorterThanTheSizeAskedForIsRefused)
+{
+  fsm_lo::Parameters parameters;
+  parameters.size_scan = 360;
+
+  fsm_lo::Matcher matcher(parameters);
+
+  const auto result = matcher.process(uniformScan(90, kC));
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), fsm_lo::MatchError::scan_too_short);
+  EXPECT_EQ(matcher.matchSize(), 360u) << "asked for, not settled by a scan";
+}
+
+/*
  * Subsampling reduces a scan to the configured number of rays by turning it
  * into points and casting fewer rays at them.
  */

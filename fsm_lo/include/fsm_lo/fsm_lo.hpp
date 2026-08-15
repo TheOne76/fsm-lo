@@ -47,7 +47,18 @@ using Pose = FSM::Pose;
  */
 struct Parameters
 {
-  std::size_t size_scan{360};
+  /** How many rays a scan is matched at.
+   *
+   *  Zero, the default, matches every ray the scan carries: the sensor's own
+   *  resolution, with nothing discarded. The first scan to arrive settles the
+   *  size for the session, since two scans can only be matched against each
+   *  other at one size, and a later scan of a different length is resampled to
+   *  it.
+   *
+   *  Any other value reduces every scan to that many rays before matching, and
+   *  refuses a scan that carries fewer. That is the setting to reach for when
+   *  a match takes longer than the sensor takes to produce the next scan. */
+  std::size_t size_scan{0};
   unsigned int num_iterations{2};
   double xy_bound{0.2};
   double t_bound{M_PI / 4};
@@ -175,16 +186,24 @@ public:
   const std::vector<Pose>& trajectory() const { return trajectory_; }
   unsigned int scansSeen() const { return scans_seen_; }
 
+  /**
+   * @brief How many rays every scan of this session is matched at.
+   *
+   * Zero until the first scan settles it, where size_scan asked for no
+   * particular size.
+   */
+  std::size_t matchSize() const { return match_size_; }
+
 private:
   Parameters parameters_;
 
   /*
-   * Owned by the shared plan cache, which keeps them for the life of the
-   * process. Creating one is expensive and, under FFTW_MEASURE, involves
-   * timing trials, so they are not per matcher resources.
+   * The number of rays every scan of this session is matched at. Settled by
+   * the first scan to arrive where size_scan is zero, and by size_scan
+   * otherwise. It does not change afterwards: the reference scan is held at
+   * this size, and a match compares two scans of one size or nothing.
    */
-  fftw_plan forward_plan_;
-  fftw_plan inverse_plan_;
+  std::size_t match_size_{0};
 
   std::vector<double> reference_scan_;
   std::vector<Pose> trajectory_;

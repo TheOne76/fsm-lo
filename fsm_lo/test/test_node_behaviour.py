@@ -171,7 +171,14 @@ class TestNodeBehaviour(unittest.TestCase):
                      self.harness.poses[-1].header.frame_id):
             self.assertFalse(name.startswith('/'), name)
 
-    def test_a_short_scan_is_refused_without_crashing_the_node(self):
+    def test_a_scan_of_a_different_length_is_matched_rather_than_dropped(self):
+        """
+        The first scan settles the size and later scans are resampled to it.
+
+        No size is configured by default, so the first scan's own resolution
+        is what the session matches at. A driver that occasionally truncates a
+        scan should cost one coarser match, not a gap in the odometry.
+        """
         self.harness.call('start')
         self.harness.publish(build_scan(FIRST_STAMP, (3.0, 2.5, 0.0)))
         self.harness.spin()
@@ -179,13 +186,13 @@ class TestNodeBehaviour(unittest.TestCase):
 
         self.harness.publish(build_scan(SECOND_STAMP, (3.02, 2.5, 0.0), size=180))
         self.harness.spin()
-        self.assertEqual(self.harness.odometry, [],
-                         'a scan shorter than size_scan produced output')
-
-        self.harness.publish(build_scan(THIRD_STAMP, (3.02, 2.5, 0.0)))
-        self.harness.spin()
         self.assertEqual(len(self.harness.odometry), 1,
-                         'the node did not recover from a short scan')
+                         'a scan of a different length produced no output')
+
+        self.harness.publish(build_scan(THIRD_STAMP, (3.04, 2.5, 0.0)))
+        self.harness.spin()
+        self.assertEqual(len(self.harness.odometry), 2,
+                         'the node did not carry on afterwards')
 
     def test_parameters_take_their_documented_defaults(self):
         expected = {
@@ -193,7 +200,7 @@ class TestNodeBehaviour(unittest.TestCase):
             'global_frame_id': 'map',
             'base_frame_id': 'base_laser_link',
             'lo_frame_id': 'lo',
-            'size_scan': 360,
+            'size_scan': 0,
             'min_magnification_size': 0,
             'max_magnification_size': 3,
             'num_iterations': 2,
@@ -201,6 +208,7 @@ class TestNodeBehaviour(unittest.TestCase):
             'max_counter': 200,
             'max_recoveries': 10,
             'rng_seed': 0,
+            'ray_search': 'angular',
             'scan_qos_reliability': 'reliable',
             'scan_qos_depth': 1,
         }

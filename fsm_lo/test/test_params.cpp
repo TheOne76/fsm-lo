@@ -60,17 +60,16 @@ TEST(ParameterValidation, TheDefaultsAreAccepted)
 }
 
 /*
- * A scan of no rays has no transform, so nothing downstream can run.
+ * Zero is not a mistake here. It means match every ray the scan carries rather
+ * than reduce it to a fixed number, which is the default and the reason there
+ * is nothing to refuse.
  */
-TEST(ParameterValidation, AScanSizeOfZeroIsRefused)
+TEST(ParameterValidation, AScanSizeOfZeroIsAcceptedAndMeansMatchWhole)
 {
   fsm_lo::Parameters parameters;
   parameters.size_scan = 0;
 
-  const std::string problem = fsm_lo::validate(parameters);
-
-  EXPECT_FALSE(problem.empty());
-  EXPECT_TRUE(mentions(problem, "size_scan")) << problem;
+  EXPECT_EQ(fsm_lo::validate(parameters), std::string{});
 }
 
 /*
@@ -225,12 +224,12 @@ TEST(ParameterValidation, AnUnknownRaySearchIsRefused)
 TEST(ParameterValidation, TheFirstProblemIsTheOneReported)
 {
   fsm_lo::Parameters parameters;
-  parameters.size_scan = 0;
+  parameters.num_iterations = 0;
   parameters.max_counter = 0;
 
   const std::string problem = fsm_lo::validate(parameters);
 
-  EXPECT_TRUE(mentions(problem, "size_scan")) << problem;
+  EXPECT_TRUE(mentions(problem, "num_iterations")) << problem;
   EXPECT_FALSE(mentions(problem, "max_counter")) << problem;
 }
 

@@ -29,8 +29,19 @@
     # --------------------------------------------------------------------------
     # Matcher
     # --------------------------------------------------------------------------
-    # Execution time is proportional to scan size, so subsampling may be needed
-    size_scan: 360
+    # How many rays a scan is matched at.
+    #
+    # 0 matches every ray the scan carries: the sensor's own resolution, with
+    # nothing discarded. The first scan to arrive settles the size for the
+    # session, since two scans can only be matched against each other at one
+    # size, and a later scan of a different length is resampled to it.
+    #
+    # Any other value reduces every scan to that many rays before matching, and
+    # refuses a scan carrying fewer. Execution time rises faster than the ray
+    # count does, so this is the setting to reach for when a match takes longer
+    # than the sensor takes to produce the next scan. The node says so when
+    # that happens.
+    size_scan: 0
 
     # Base angular oversampling, and the maximum it may reach. Larger values buy
     # accuracy with execution time.
