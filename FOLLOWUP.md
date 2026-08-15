@@ -15,19 +15,21 @@ some drivers use to mean "nothing within range" rather than "a surface at
 exactly this distance", should be treated the same way. It currently is not.
 Deciding that needs a survey of what drivers actually do.
 
-## Two core functions are reachable from nothing
+## Twenty six core functions are shipped and exercised by nothing
 
-`completeScan5` and `generatePoseWithinMap` are defined in the core header and
-called from nowhere: not from the matcher, not from the wrapper, not from a
-test. `findExact` is reached only by the tests, where it is the slow and
-obvious answer the two selectable ray searches are held to, which is a
-deliberate role rather than an oversight.
+The core header declares seventy three functions. The runtime path reaches
+forty five. Of the twenty eight it does not, one is unreachable on purpose and
+one has a test; the remaining twenty six are compiled into the package and run
+by nothing at all.
 
-No inventory of this has been taken. What that needs is a build with
-`-ffunction-sections -Wl,--gc-sections` and a list of what survives linking,
-compared against what the header defines. Until that exists the coverage gap is
-silent rather than visible, and dead code is being read and maintained as
-though it ran.
+They are listed and grouped, with the method used to arrive at the list, in the
+header comment of `fsm_lo/test/test_core_golden.cpp`. `tests/reachability/`
+holds the probe, so the list can be recomputed whenever a call is added or
+removed.
+
+They are listed rather than deleted because deleting them is a decision about
+how much of the original algorithm this package is obliged to carry, and that
+is not a decision to take while porting.
 
 ## The intersection of an oblique ray and a wall is good to about 1e-9
 
