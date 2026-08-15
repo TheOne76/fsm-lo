@@ -335,6 +335,50 @@ TEST(TranslationStage, MistakesATurnForAMove)
        "the input or the stage has changed";
 }
 
+/*
+ * The core reports in plain strings and hands each one to whatever the host
+ * installed. Where nothing is installed the line is dropped, which is what a
+ * library with nobody listening should do.
+ *
+ * Almost everything the core has to say is stage timing that an ordinary build
+ * compiles out. The one complaint it can raise in an ordinary build is being
+ * handed a rotation mode it does not know, so that is what is used here to
+ * make it speak.
+ */
+TEST(Diagnostics, TheCoreReportsThroughWhateverTheHostInstalls)
+{
+  const std::vector<std::vector<double>> scans =
+    readScans("pure_rotation_scans.csv");
+  ASSERT_GE(scans.size(), 2u);
+
+  const fftw_plan forward = FSM::DFTUtils::forwardPlan(kSize);
+  const fftw_plan inverse = FSM::DFTUtils::inversePlan(kSize);
+  const std::vector<std::pair<double, double>> map = mapOf(scans[0]);
+
+  /* Nothing installed, so nothing is said and nothing goes wrong. */
+  FSM::Rotation::fmt(scans[1], FSM::Pose{}, map, 0, "spiral", forward, inverse,
+    FSM::RaySearch::angular);
+
+  std::vector<std::string> reported;
+  fsm_lo::setDiagnosticSink(
+    [&reported](const std::string& message) { reported.push_back(message); });
+
+  FSM::Rotation::fmt(scans[1], FSM::Pose{}, map, 0, "spiral", forward, inverse,
+    FSM::RaySearch::angular);
+
+  fsm_lo::setDiagnosticSink(nullptr);
+
+  ASSERT_EQ(reported.size(), 1u);
+  EXPECT_NE(reported[0].find("batch"), std::string::npos) << reported[0];
+  EXPECT_EQ(reported[0].back() != '\n', true)
+    << "the sink decides how a line ends, not the core";
+
+  /* And uninstalled again, so a later test is not still being listened to. */
+  FSM::Rotation::fmt(scans[1], FSM::Pose{}, map, 0, "spiral", forward, inverse,
+    FSM::RaySearch::angular);
+  EXPECT_EQ(reported.size(), 1u);
+}
+
 int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);

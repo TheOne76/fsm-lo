@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <expected>
+#include <functional>
 #include <span>
 #include <string>
 #include <vector>
@@ -114,6 +115,23 @@ bool isValidRange(double range);
  *         naming the offending parameter and its value.
  */
 std::string validate(const Parameters& parameters);
+
+/**
+ * @brief Install a destination for the matching core's diagnostics.
+ *
+ * The core reports in plain strings and does not grade them, having no way to
+ * know what a host considers serious. Where no destination is installed the
+ * reports are dropped, which is what a library with nobody listening should
+ * do.
+ *
+ * Nearly everything the core has to say is stage timing, and that is compiled
+ * out unless the core is built with FSM_LO_TRACE. An ordinary build reports
+ * only where it cannot write a file or is handed a mode it does not know.
+ *
+ * Install before matching starts. Nothing guards a host that swaps the
+ * destination while a match is running.
+ */
+void setDiagnosticSink(std::function<void(const std::string&)> sink);
 
 /**
  * @brief Lidar odometry by correspondenceless scan matching.

@@ -76,6 +76,19 @@ Interface::Interface(const rclcpp::NodeOptions& options)
     throw std::invalid_argument(problem);
   }
 
+  /*
+   * The core reports in plain strings and does not say how serious any of them
+   * is, so none is invented here. Nearly everything it has to say is stage
+   * timing that an ordinary build compiles out entirely; what reaches this in
+   * an ordinary build is rare and worth seeing, which is why it goes out at
+   * info rather than debug.
+   */
+  setDiagnosticSink(
+    [this](const std::string& message)
+    {
+      RCLCPP_INFO(get_logger(), "%s", message.c_str());
+    });
+
   matcher_ = std::make_unique<Matcher>(parameters);
 
   global_frame_id_ = get_parameter("global_frame_id").as_string();

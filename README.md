@@ -198,6 +198,18 @@ lo_frame_id <- base_frame_id
 
 in other words `fsm_lo` publishes the transform from `base_laser_link` (or equivalent) to the equivalent of `/odom` (in this case `lo_frame_id`).
 
+#### Diagnostics
+
+The matching core reports in plain strings and does not write to a terminal itself. It hands each line to whatever destination the host installed, through `fsm_lo::setDiagnosticSink`, and drops the line where nothing was installed. The node installs a destination that forwards to `RCLCPP_INFO`, so anything the core says arrives in the ordinary ROS log.
+
+In an ordinary build there is almost nothing to say. The stage timings, which are the bulk of it, are compiled out unless the core is built with `FSM_LO_TRACE`:
+
+```sh
+colcon build --cmake-args "-DCMAKE_CXX_FLAGS=-DFSM_LO_TRACE"
+```
+
+That build is for finding out where the time goes and is not the one to run a robot with: it reads the clock around every stage of every iteration.
+
 ## Upgrading from the ROS 1 version
 
 The matcher itself is unchanged, and this is measured rather than asserted: driven over identical synthetic scans, the two versions agree on every published quantity to better than 4e-15, six orders of magnitude inside the 1e-9 bar the comparison demands. Both sides are checked against themselves first, three runs each, so that the comparison rests on something reproducible.

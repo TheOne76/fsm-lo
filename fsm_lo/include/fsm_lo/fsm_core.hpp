@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <format>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -308,6 +309,50 @@ struct MatchOutput
  * step with the definitions by hand for the rest of the file's life. The
  * spelling is the smaller wrong.
  */
+/* ========================================================================== */
+/*
+ * Where the core's diagnostics go.
+ *
+ * The core knows nothing of ROS, and nothing of whatever else a host might
+ * want its reports to reach. It hands each line to the sink the host
+ * installed, and where no sink was installed it drops the line. Dropping is
+ * the right default: a library writing to a terminal nobody is reading is a
+ * library making a decision that was never its to make.
+ *
+ * Most of what passes through here is stage timing, and that is compiled out
+ * altogether unless FSM_LO_TRACE is defined, because the clock readings around
+ * every stage cost more than the printing ever did. What survives into an
+ * ordinary build is the handful of complaints the core makes when it cannot
+ * write a file or is handed a mode it does not recognise.
+ *
+ * The sink is installed once, before matching starts, and read from the thread
+ * that matches. It is not guarded against a host that swaps it while a match
+ * is running, and no host has reason to.
+ */
+class Diagnostics
+{
+  public:
+
+  static void report(const std::string& message)
+  {
+    if (const std::function<void(const std::string&)>& installed = sink())
+      installed(message);
+  }
+
+  static void setSink(std::function<void(const std::string&)> sink_in)
+  {
+    sink() = std::move(sink_in);
+  }
+
+  private:
+
+  static std::function<void(const std::string&)>& sink()
+  {
+    static std::function<void(const std::string&)> installed;
+    return installed;
+  }
+};
+/* ========================================================================== */
 class X
 {
   public:
@@ -473,7 +518,8 @@ class X
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [X::findExact]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [X::findExact]",
+      elapsed.count()));
 #endif
 
     return intersections;
@@ -631,7 +677,8 @@ class X
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [X::findExactAngular]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [X::findExactAngular]",
+      elapsed.count()));
 #endif
 
     return intersections;
@@ -824,7 +871,8 @@ class X
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [X::findExactWindowed]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [X::findExactWindowed]",
+      elapsed.count()));
 #endif
 
     return intersections;
@@ -979,7 +1027,8 @@ class Utils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(end-start);
 
-    printf("%f [conjugate]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [conjugate]",
+      elapsed.count()));
 #endif
 
     return ret_vector;
@@ -1000,7 +1049,8 @@ class Utils
       eps = 1.0;
 
 #ifdef FSM_LO_TRACE
-    printf("inclusion_bound = %f\n", inclusion_bound + eps);
+    Diagnostics::report(std::format("inclusion_bound = {:f}",
+      inclusion_bound + eps));
 #endif
 
     double d = 0.0;
@@ -1268,7 +1318,8 @@ class Utils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(end-start);
 
-    printf("%f [innerProductComplex]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [innerProductComplex]",
+      elapsed.count()));
 #endif
 
     return ret_vector;
@@ -1427,7 +1478,8 @@ class Utils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(end-start);
 
-    printf("%f [points2scan]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [points2scan]",
+      elapsed.count()));
 #endif
 
     return scan;
@@ -1484,7 +1536,8 @@ class Utils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(end-start);
 
-    printf("%f [scan2points]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [scan2points]",
+      elapsed.count()));
 #endif
 
     return points;
@@ -1747,14 +1800,15 @@ class DatasetUtils
 
     for (std::size_t s = 0; s < ranges.size(); s++)
     {
-      printf("NEW SCAN\n");
+      Diagnostics::report("NEW SCAN");
       for (std::size_t r = 0; r < ranges[s].size(); r++)
       {
-        printf("r[%zu] = %f\n", r, ranges[s][r]);
+        Diagnostics::report(std::format("r[{}] = {:f}",
+          r, ranges[s][r]));
       }
 
-      printf("FROM POSE (%f,%f,%f)\n",
-        poses[s].x, poses[s].y, poses[s].t);
+      Diagnostics::report(std::format("FROM POSE ({:f},{:f},{:f})",
+        poses[s].x, poses[s].y, poses[s].t));
     }
   }
 
@@ -1975,7 +2029,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log hulls \n");
+      Diagnostics::report("Could not log hulls ");
   }
 
   /*****************************************************************************
@@ -1998,7 +2052,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log scans\n");
+      Diagnostics::report("Could not log scans");
   }
 
   /*****************************************************************************
@@ -2031,7 +2085,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log points\n");
+      Diagnostics::report("Could not log points");
   }
 
   /*****************************************************************************
@@ -2055,7 +2109,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log polygon\n");
+      Diagnostics::report("Could not log polygon");
   }
 
   /*****************************************************************************
@@ -2091,7 +2145,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log polygons \n");
+      Diagnostics::report("Could not log polygons ");
   }
 
   /*****************************************************************************
@@ -2124,7 +2178,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log range scans\n");
+      Diagnostics::report("Could not log range scans");
   }
 
   static void scan(
@@ -2169,7 +2223,7 @@ class Dump
       file.close();
     }
     else
-      printf("Could not log scans\n");
+      Diagnostics::report("Could not log scans");
   }
 
 };
@@ -2397,7 +2451,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [dft]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [dft]",
+      elapsed.count()));
 #endif
 
     return dft_coeff_vector;
@@ -2443,7 +2498,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [dft]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [dft]",
+      elapsed.count()));
 #endif
 
     return dft_coeff_vector;
@@ -2497,7 +2553,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [dftBatch]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [dftBatch]",
+      elapsed.count()));
 #endif
 
     return coeff_vector_v;
@@ -2554,7 +2611,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [dftBatch]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [dftBatch]",
+      elapsed.count()));
 #endif
 
     return coeff_vector_v;
@@ -2581,7 +2639,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [fftshift]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [fftshift]",
+      elapsed.count()));
 #endif
   }
 
@@ -2642,7 +2701,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [getDFTCoefficientsPairs]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [getDFTCoefficientsPairs]",
+      elapsed.count()));
 #endif
 
     return fft_coeff_pairs;
@@ -2700,7 +2760,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [getFirstDFTCoefficient]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [getFirstDFTCoefficient]",
+      elapsed.count()));
 #endif
 
     return dft_coeff_vector;
@@ -2753,7 +2814,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [getFirstDFTCoefficient]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [getFirstDFTCoefficient]",
+      elapsed.count()));
 #endif
 
     return dft_coeff_vector;
@@ -2798,7 +2860,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [idft]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [idft]",
+      elapsed.count()));
 #endif
 
     return dft_coeff_vector;
@@ -2855,7 +2918,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [idftBatch]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [idftBatch]",
+      elapsed.count()));
 #endif
 
     return dft_coeffs_v;
@@ -2914,7 +2978,8 @@ class DFTUtils
     std::chrono::duration<double> elapsed =
       std::chrono::duration_cast< std::chrono::duration<double> >(b-a);
 
-    printf("%f [idftBatch]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [idftBatch]",
+      elapsed.count()));
 #endif
 
     return dft_coeffs_v;
@@ -2962,10 +3027,10 @@ class Translation
     const RaySearch ray_search)
   {
 #ifdef FSM_LO_TRACE
-    printf("input pose  (%f,%f,%f) [Translation::tff]\n",
+    Diagnostics::report(std::format("input pose  ({:f},{:f},{:f}) [Translation::tff]",
       virtual_pose.x,
       virtual_pose.y,
-      virtual_pose.t);
+      virtual_pose.t));
 #endif
 
     TranslationOutput output;
@@ -3057,7 +3122,7 @@ class Translation
       if(!Utils::isPositionInMap(current_pose, map))
       {
 #ifdef FSM_LO_TRACE
-        printf("OUT OF BOUNDS\n");
+        Diagnostics::report("OUT OF BOUNDS");
 #endif
 
         output.iterations = it;
@@ -3082,9 +3147,12 @@ class Translation
       sum_d_v = std::accumulate(d_v.begin(), d_v.end(), 0.0);
 
 #ifdef FSM_LO_TRACE
-      printf("err = %f\n", err);
-      printf("norm_x1 = %f\n", norm_x1);
-      printf("sum_d_v = %f\n", sum_d_v);
+      Diagnostics::report(std::format("err = {:f}",
+        err));
+      Diagnostics::report(std::format("norm_x1 = {:f}",
+        norm_x1));
+      Diagnostics::report(std::format("sum_d_v = {:f}",
+        sum_d_v));
 #endif
 
       if (pick_min)
@@ -3125,10 +3193,10 @@ class Translation
       std::chrono::duration_cast< std::chrono::duration<double> >(end-start);
 
 #ifdef FSM_LO_TRACE
-    printf("output pose (%f,%f,%f) [Translation::tff]\n",
+    Diagnostics::report(std::format("output pose ({:f},{:f},{:f}) [Translation::tff]",
       output.pose.x,
       output.pose.y,
-      output.pose.t);
+      output.pose.t));
 #endif
 
     output.criterion = sum_d_v / real_scan.size();
@@ -3162,7 +3230,8 @@ class Translation
     const double y_e = errors_xy[1];
 
 #ifdef FSM_LO_TRACE
-    printf("(x_e,y_e) = (%f,%f)\n", x_e, y_e);
+    Diagnostics::report(std::format("(x_e,y_e) = ({:f},{:f})",
+      x_e, y_e));
 #endif
 
     return TranslationCorrection{x_e, y_e, diff_true, norm_x1};
@@ -3237,7 +3306,7 @@ public:
         ray_search);
     else
     {
-      printf("[Rotation::fmt] Use 'batch' or 'sequential' instead \n");
+      Diagnostics::report("[Rotation::fmt] Use 'batch' or 'sequential' instead ");
       RotationOutput output; output.angles.push_back(-1.0); return output;
     }
   }
@@ -3567,10 +3636,10 @@ public:
     const RaySearch ray_search)
   {
 #ifdef FSM_LO_TRACE
-    printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
+    Diagnostics::report(std::format("input pose  ({:f},{:f},{:f}) [Rotation::fmt2]",
       virtual_pose.x,
       virtual_pose.y,
-      virtual_pose.t);
+      virtual_pose.t));
 #endif
 
     RotationOutput output;
@@ -3670,10 +3739,10 @@ public:
 #ifdef FSM_LO_TRACE
     for (unsigned int i = 0; i < output.angles.size(); i++)
     {
-      printf("cand. poses (%f,%f,%f) [Rotation::fmt2]\n",
+      Diagnostics::report(std::format("cand. poses ({:f},{:f},{:f}) [Rotation::fmt2]",
         virtual_pose.x,
         virtual_pose.y,
-        virtual_pose.t+output.angles[i]);
+        virtual_pose.t+output.angles[i]));
     }
 #endif
 
@@ -3691,10 +3760,10 @@ public:
     const RaySearch ray_search)
   {
 #ifdef FSM_LO_TRACE
-    printf("input pose  (%f,%f,%f) [Rotation::fmt2]\n",
+    Diagnostics::report(std::format("input pose  ({:f},{:f},{:f}) [Rotation::fmt2]",
       virtual_pose.x,
       virtual_pose.y,
-      virtual_pose.t);
+      virtual_pose.t));
 #endif
 
     RotationOutput output;
@@ -3766,11 +3835,16 @@ public:
       pds.push_back(pd);
 
 #ifdef FSM_LO_TRACE
-      printf("a = %u\n", a);
-      printf("angle to out = %f\n", virtual_pose.t + ornt_a);
-      printf("snr = %.10f\n", snr);
-      printf("fahm = %f\n", fahm);
-      printf("pd = %.20f\n", pd);
+      Diagnostics::report(std::format("a = {}",
+        a));
+      Diagnostics::report(std::format("angle to out = {:f}",
+        virtual_pose.t + ornt_a));
+      Diagnostics::report(std::format("snr = {:.10f}",
+        snr));
+      Diagnostics::report(std::format("fahm = {:f}",
+        fahm));
+      Diagnostics::report(std::format("pd = {:.20f}",
+        pd));
 #endif
     }
 
@@ -3791,10 +3865,10 @@ public:
 #ifdef FSM_LO_TRACE
     for (unsigned int i = 0; i < output.angles.size(); i++)
     {
-      printf("cand. poses (%f,%f,%f) [Rotation::fmt2]\n",
+      Diagnostics::report(std::format("cand. poses ({:f},{:f},{:f}) [Rotation::fmt2]",
         virtual_pose.x,
         virtual_pose.y,
-        virtual_pose.t+output.angles[i]);
+        virtual_pose.t+output.angles[i]));
     }
 #endif
 
@@ -3882,7 +3956,8 @@ public:
       [[maybe_unused]] const double max_c = criteria[max_c_idx];
 
 #ifdef FSM_LO_TRACE
-      printf("best id = %d\n", max_c_idx);
+      Diagnostics::report(std::format("best id = {}",
+        max_c_idx));
 #endif
 
       const int vendalia_method = 1;
@@ -3914,7 +3989,8 @@ public:
           k = 0;
 
 #ifdef FSM_LO_TRACE
-        printf("k = %d\n", k);
+        Diagnostics::report(std::format("k = {}",
+          k));
 #endif
         best_ids_set.insert(k);
       }
@@ -3932,11 +4008,12 @@ public:
     }
 
 #ifdef FSM_LO_TRACE
-    printf("BEST IDS = [");
+    Diagnostics::report("BEST IDS = [");
     for (unsigned int i = 0; i < best_ids.size(); i++)
-      printf("%u ", best_ids[i]);
+      Diagnostics::report(std::format("{} ",
+        best_ids[i]));
 
-    printf("]\n");
+    Diagnostics::report("]");
 #endif
 
     return best_ids;
@@ -4048,8 +4125,10 @@ class Match
     while (current_magnification_size <= max_magnification_size)
     {
 #ifdef FSM_LO_TRACE
-      printf("current_magnification_size = %d ---\n", current_magnification_size);
-      printf("counter                    = %d ---\n", counter);
+      Diagnostics::report(std::format("current_magnification_size = {} ---",
+        current_magnification_size));
+      Diagnostics::report(std::format("counter                    = {} ---",
+        counter));
 #endif
 
       /*
@@ -4207,9 +4286,12 @@ class Match
       tc_v.push_back(trans_criterion);
 
 #ifdef FSM_LO_TRACE
-      printf("rc0 = %f\n", rc0_v.back());
-      printf("rc1 = %f\n", rc1_v.back());
-      printf("tc  = %f\n", tc_v.back());
+      Diagnostics::report(std::format("rc0 = {:f}",
+        rc0_v.back()));
+      Diagnostics::report(std::format("rc1 = {:f}",
+        rc1_v.back()));
+      Diagnostics::report(std::format("tc  = {:f}",
+        tc_v.back()));
 #endif
 
       xs.push_back(result_pose->x);
@@ -4231,7 +4313,7 @@ class Match
       if (tc_v.back() == -2.0)
       {
 #ifdef FSM_LO_TRACE
-        printf("Will trigger recovery due to condition 0\n");
+        Diagnostics::report("Will trigger recovery due to condition 0");
 #endif
         l2_recovery = true;
       }
@@ -4240,7 +4322,7 @@ class Match
       if (counter > max_counter)
       {
 #ifdef FSM_LO_TRACE
-        printf("Will trigger recovery due to condition 4\n");
+        Diagnostics::report("Will trigger recovery due to condition 4");
 #endif
         /* l2_recovery = true; */
 
@@ -4255,7 +4337,7 @@ class Match
         if (num_recoveries > max_recoveries)
         {
 #ifdef FSM_LO_TRACE
-          printf("ERROR: MAXIMUM RECOVERIES\n");
+          Diagnostics::report("ERROR: MAXIMUM RECOVERIES");
 #endif
           break;
         }
@@ -4291,7 +4373,8 @@ class Match
       std::chrono::duration_cast< std::chrono::duration<double> >(end-start);
 
 #ifdef FSM_LO_TRACE
-    printf("%f [Match::fmt]\n", elapsed.count());
+    Diagnostics::report(std::format("{:f} [Match::fmt]",
+      elapsed.count()));
 #endif
 
     op->exec_time = elapsed.count();
@@ -4315,10 +4398,10 @@ class Match
     const unsigned int seed = 0)
   {
 #ifdef FSM_LO_TRACE
-    printf("*********************************\n");
-    printf("************CAUTION**************\n");
-    printf("Level 2 recovery mode activated\n");
-    printf("*********************************\n");
+    Diagnostics::report("*********************************");
+    Diagnostics::report("************CAUTION**************");
+    Diagnostics::report("Level 2 recovery mode activated");
+    Diagnostics::report("*********************************");
 #endif
 
     std::optional<Pose> output_pose;

@@ -74,6 +74,13 @@ bool isValidRange(const double range)
 
 /*******************************************************************************
 */
+void setDiagnosticSink(std::function<void(const std::string&)> sink)
+{
+  FSM::Diagnostics::setSink(std::move(sink));
+}
+
+/*******************************************************************************
+*/
 std::string validate(const Parameters& parameters)
 {
   if (parameters.size_scan == 0)
