@@ -1,19 +1,17 @@
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Changelog for package fsm_lo
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package fsm_lidar_odometry
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Forthcoming
 -----------
-* First release. Ports the package from ROS 1 Kinetic to ROS 2, and is the
-  first version published to a ROS distribution. The ROS 1 version was only
+* Ports the package from ROS 1 Kinetic to ROS 2. The ROS 1 version was only
   ever available from source, so there is no earlier changelog to continue.
 * The package is renamed from ``fsm_lo`` to ``fsm_lidar_odometry``. The node,
   the launch file, the default node name, the include directory, the C++
   namespace and the four service names all follow it. Topic and parameter
   names are unchanged.
 * The four services take and return ``std_srvs/srv/Trigger`` instead of taking
-  and returning nothing, so callers now get a success flag and a message. The
-  service names are unchanged.
+  and returning nothing, so callers now get a success flag and a message.
 * Output is stamped from the incoming scan rather than from the clock at the
   moment of processing. The reported twist follows from the interval between
   scan stamps, so it no longer varies with machine load, and replaying a

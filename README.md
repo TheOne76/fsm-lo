@@ -34,7 +34,6 @@ Table of Contents
 
 * [Requirements](#requirements)
 * [Installation](#installation)
-  * [From apt](#from-apt)
   * [From Docker Hub](#from-docker-hub)
   * [From source](#from-source)
 * [Run](#run)
@@ -54,19 +53,13 @@ Table of Contents
 
 ## Requirements
 
-ROS 2 Lyrical and a compiler with C++23 support. Beyond ROS the package needs FFTW3, CGAL and Eigen3. All three are declared in the package manifest, so `apt` and `rosdep` pull them in without being asked.
+ROS 2 Lyrical and a compiler with C++23 support. Beyond ROS the package needs FFTW3, CGAL and Eigen3. All three are declared in the package manifest, so `rosdep` pulls them in without being asked.
 
 This package is MIT, but the CGAL components it uses are GPL v3. A binary built from these sources therefore carries GPL v3 terms if you redistribute it.
 
 ## Installation
 
-Three ways, in increasing order of effort. The ROS 2 sources are on the `lyrical-devel` branch, which is the default; the older ROS 1 version is on `kinetic-devel`.
-
-### From apt
-
-```bash
-sudo apt install ros-lyrical-fsm-lidar-odometry
-```
+Two ways, in increasing order of effort. The ROS 2 sources are on the `lyrical-devel` branch, which is the default; the older ROS 1 version is on `kinetic-devel`.
 
 ### From Docker Hub
 
@@ -93,20 +86,16 @@ mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 git clone https://github.com/fourier-scan-matcher/fsm-lidar-odometry.git
 cd ~/ros2_ws
-rosdep install --from-paths src --ignore-src -r -y
+sudo apt install libfftw3-dev
+rosdep install --from-paths src --ignore-src -r -y --skip-keys libfftw3
 colcon build --packages-select fsm_lidar_odometry
 ```
+
+FFTW3 is installed by hand there because `rosdep`'s rule for it names `libfftw3-3`, which Ubuntu has replaced with per-precision packages and which no longer exists on the release Lyrical targets. Once that rule carries an override, the two lines collapse back into one.
 
 ## Run
 
 ### Launch
-
-Installed from apt:
-
-```bash
-source /opt/ros/lyrical/setup.bash
-ros2 launch fsm_lidar_odometry fsm_lidar_odometry.launch.xml
-```
 
 Built from source:
 
