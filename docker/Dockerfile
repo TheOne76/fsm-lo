@@ -1,4 +1,4 @@
-FROM osrf/ros:lyrical-desktop-full-resolute
+FROM ros:lyrical-ros-base
 
 # Make sure we are using bash and catching errors
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
@@ -30,7 +30,6 @@ RUN export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-inf
 RUN apt-get -y update                                                       && \
     DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
     sudo apt-utils build-essential g++ git curl lsb-release pkg-config \
-    libfftw3-dev libcgal-dev libeigen3-dev libboost-random-dev \
     python3-rosdep ros-lyrical-rmw-cyclonedds-cpp gosu clang \
     bash-completion vim nano bc                                             && \
     rm -rf /var/lib/apt/lists/*
@@ -67,10 +66,26 @@ USER root
 ################################################################################
 RUN rosdep update
 
+COPY --chown=${USER}:${USER} fsm_lidar_odometry/ /home/${USER}/ros2_ws/src/fsm_lidar_odometry/
+
+# The manifest is the one list of what this package needs. Resolve it rather
+# than repeating it here, so that a dependency added to the manifest cannot be
+# forgotten in this file.
+#
+# The libfftw3 key is the exception. Its rule in ros/rosdistro resolves to
+# libfftw3-3, which Ubuntu dropped in favour of per-precision packages and
+# which therefore does not exist on this release. Until that rule carries an
+# override, the key is skipped and the development package, which pulls the
+# runtime it needs, is named directly.
+RUN apt-get -y update                                                       && \
+    apt-get install -y --no-install-recommends libfftw3-dev                 && \
+    rosdep install --from-paths /home/${USER}/ros2_ws/src --ignore-src -r -y   \
+      --skip-keys libfftw3                                                  && \
+    rm -rf /var/lib/apt/lists/*
+
 # Drop to ${USER} so that `ros2_ws` and everything under it are owned by ${USER}
 USER ${USER}
 
-COPY --chown=${USER}:${USER} fsm_lidar_odometry/ /home/${USER}/ros2_ws/src/fsm_lidar_odometry/
 RUN source /opt/ros/lyrical/setup.bash                                      && \
     cd /home/${USER}/ros2_ws                                                && \
     colcon build                                                               \

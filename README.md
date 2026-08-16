@@ -70,7 +70,7 @@ sudo apt install ros-lyrical-fsm-lidar-odometry
 
 ### From Docker Hub
 
-The image carries ROS 2 Lyrical and every dependency, so the host needs nothing but Docker:
+The image carries ROS 2 Lyrical and every dependency, so the host needs nothing but Docker. It is a runtime image: it holds what the node needs to run and no visualisation or simulation tools, which keeps it a little over two gigabytes.
 
 ```bash
 docker pull li9i/fsm-lidar-odometry:lyrical
