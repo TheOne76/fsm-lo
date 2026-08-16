@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(fsm_lo)
+project(fsm_lidar_odometry)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -10,12 +10,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ------------------------------------------------------------------------------
-# FSM_LO_EXACT_FP=ON replaces -Ofast with optimisation settings that forbid the
+# FSM_LIDAR_ODOMETRY_EXACT_FP=ON replaces -Ofast with optimisation settings that forbid the
 # compiler from reassociating floating point arithmetic or contracting
 # multiply-adds. Two compilers reassociate differently, so a reference build and
 # a build under test only produce comparable numbers when this is on.
 #
-# FSM_LO_DETERMINISTIC_FFT=ON makes FFTW select its plan by heuristic rather
+# FSM_LIDAR_ODOMETRY_DETERMINISTIC_FFT=ON makes FFTW select its plan by heuristic rather
 # than by timing itself. Plan choice affects rounding, so without this the same
 # binary can produce different numbers on two consecutive runs.
 #
@@ -23,10 +23,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # tests below force both ON regardless, since their tolerances are meaningless
 # otherwise.
 # ------------------------------------------------------------------------------
-option(FSM_LO_EXACT_FP "Forbid floating point reassociation and contraction" OFF)
-option(FSM_LO_DETERMINISTIC_FFT "Select FFTW plans by heuristic, not by timing" OFF)
+option(FSM_LIDAR_ODOMETRY_EXACT_FP "Forbid floating point reassociation and contraction" OFF)
+option(FSM_LIDAR_ODOMETRY_DETERMINISTIC_FFT "Select FFTW plans by heuristic, not by timing" OFF)
 
-if(FSM_LO_EXACT_FP)
+if(FSM_LIDAR_ODOMETRY_EXACT_FP)
   add_compile_options(-O2 -fno-fast-math -ffp-contract=off)
 else()
   add_compile_options(-Ofast)
@@ -51,29 +51,29 @@ pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 # ------------------------------------------------------------------------------
 # The core: the matcher and the odometry state it drives. No ROS anywhere in
 # here, so it can be tested without a ROS installation present.
-add_library(fsm_lo_core SHARED
-  src/fsm_lo/fsm_lo.cpp)
+add_library(fsm_lidar_odometry_core SHARED
+  src/fsm_lidar_odometry/fsm_lidar_odometry.cpp)
 
-target_include_directories(fsm_lo_core PUBLIC
+target_include_directories(fsm_lidar_odometry_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(fsm_lo_core PUBLIC
+target_link_libraries(fsm_lidar_odometry_core PUBLIC
   Eigen3::Eigen
   CGAL::CGAL
   PkgConfig::FFTW3)
 
-if(FSM_LO_DETERMINISTIC_FFT)
-  target_compile_definitions(fsm_lo_core PUBLIC FSM_LO_FFTW_ESTIMATE)
+if(FSM_LIDAR_ODOMETRY_DETERMINISTIC_FFT)
+  target_compile_definitions(fsm_lidar_odometry_core PUBLIC FSM_LIDAR_ODOMETRY_FFTW_ESTIMATE)
 endif()
 
 # ------------------------------------------------------------------------------
 # The ROS interface, and the executable that runs it.
-add_library(fsm_lo_interface SHARED
-  src/fsm_lo/fsm_lo_interface.cpp)
+add_library(fsm_lidar_odometry_interface SHARED
+  src/fsm_lidar_odometry/fsm_lidar_odometry_interface.cpp)
 
-target_link_libraries(fsm_lo_interface PUBLIC
-  fsm_lo_core
+target_link_libraries(fsm_lidar_odometry_interface PUBLIC
+  fsm_lidar_odometry_core
   rclcpp::rclcpp
   tf2::tf2
   tf2_ros::tf2_ros
@@ -83,10 +83,10 @@ target_link_libraries(fsm_lo_interface PUBLIC
   ${nav_msgs_TARGETS}
   ${std_srvs_TARGETS})
 
-add_executable(fsm_lo_interface_node
-  src/fsm_lo/fsm_lo_interface_node.cpp)
+add_executable(fsm_lidar_odometry_interface_node
+  src/fsm_lidar_odometry/fsm_lidar_odometry_interface_node.cpp)
 
-target_link_libraries(fsm_lo_interface_node fsm_lo_interface)
+target_link_libraries(fsm_lidar_odometry_interface_node fsm_lidar_odometry_interface)
 
 # ------------------------------------------------------------------------------
 if(BUILD_TESTING)
@@ -108,28 +108,28 @@ if(BUILD_TESTING)
   # compiler is free to reassociate, which moves results well past that, so a
   # passing test would say nothing. Force the exact configuration here whatever
   # the library itself was configured with.
-  ament_add_gtest(test_fsm_lo_core
+  ament_add_gtest(test_fsm_lidar_odometry_core
     test/test_defects_core.cpp)
 
-  ament_add_gtest(test_fsm_lo_core_golden
+  ament_add_gtest(test_fsm_lidar_odometry_core_golden
     test/test_core_golden.cpp)
 
-  ament_add_gtest(test_fsm_lo_dft
+  ament_add_gtest(test_fsm_lidar_odometry_dft
     test/test_dft.cpp)
 
-  ament_add_gtest(test_fsm_lo_geometry
+  ament_add_gtest(test_fsm_lidar_odometry_geometry
     test/test_geometry.cpp)
 
-  ament_add_gtest(test_fsm_lo_invalid_ranges
+  ament_add_gtest(test_fsm_lidar_odometry_invalid_ranges
     test/test_invalid_ranges.cpp)
 
-  ament_add_gtest(test_fsm_lo_params
+  ament_add_gtest(test_fsm_lidar_odometry_params
     test/test_params.cpp)
 
-  ament_add_gtest(test_fsm_lo_scan_handling
+  ament_add_gtest(test_fsm_lidar_odometry_scan_handling
     test/test_scan_handling.cpp)
 
-  ament_add_gtest(test_fsm_lo_stages
+  ament_add_gtest(test_fsm_lidar_odometry_stages
     test/test_stages.cpp)
 
   find_package(launch_testing_ament_cmake REQUIRED)
@@ -145,26 +145,26 @@ if(BUILD_TESTING)
   add_launch_test(test/test_node_behaviour.py TIMEOUT 400
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/test)
 
-  foreach(test_target test_fsm_lo_core test_fsm_lo_core_golden
-                      test_fsm_lo_dft test_fsm_lo_geometry
-                      test_fsm_lo_invalid_ranges test_fsm_lo_params
-                      test_fsm_lo_scan_handling test_fsm_lo_stages)
+  foreach(test_target test_fsm_lidar_odometry_core test_fsm_lidar_odometry_core_golden
+                      test_fsm_lidar_odometry_dft test_fsm_lidar_odometry_geometry
+                      test_fsm_lidar_odometry_invalid_ranges test_fsm_lidar_odometry_params
+                      test_fsm_lidar_odometry_scan_handling test_fsm_lidar_odometry_stages)
     if(TARGET ${test_target})
-      target_link_libraries(${test_target} fsm_lo_core)
+      target_link_libraries(${test_target} fsm_lidar_odometry_core)
       target_compile_options(${test_target} PRIVATE
         -O2 -fno-fast-math -ffp-contract=off)
       target_compile_definitions(${test_target} PRIVATE
-        FSM_LO_FFTW_ESTIMATE
-        FSM_LO_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
+        FSM_LIDAR_ODOMETRY_FFTW_ESTIMATE
+        FSM_LIDAR_ODOMETRY_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
     endif()
   endforeach()
 endif()
 
 # ------------------------------------------------------------------------------
 install(TARGETS
-  fsm_lo_core
-  fsm_lo_interface
-  fsm_lo_interface_node
+  fsm_lidar_odometry_core
+  fsm_lidar_odometry_interface
+  fsm_lidar_odometry_interface_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
@@ -176,6 +176,6 @@ install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 
 ament_export_include_directories(include)
-ament_export_libraries(fsm_lo_core fsm_lo_interface)
+ament_export_libraries(fsm_lidar_odometry_core fsm_lidar_odometry_interface)
 
 ament_package()

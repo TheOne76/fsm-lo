@@ -17,8 +17,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-#ifndef FSM_LO__FSM_LO_HPP_
-#define FSM_LO__FSM_LO_HPP_
+#ifndef FSM_LIDAR_ODOMETRY__FSM_LIDAR_ODOMETRY_HPP_
+#define FSM_LIDAR_ODOMETRY__FSM_LIDAR_ODOMETRY_HPP_
 
 #include <cstddef>
 #include <expected>
@@ -29,9 +29,9 @@
 
 #include <Eigen/Geometry>
 
-#include "fsm_lo/fsm_core.hpp"
+#include "fsm_lidar_odometry/fsm_core.hpp"
 
-namespace fsm_lo
+namespace fsm_lidar_odometry
 {
 
 /**
@@ -136,7 +136,7 @@ std::string validate(const Parameters& parameters);
  * do.
  *
  * Nearly everything the core has to say is stage timing, and that is compiled
- * out unless the core is built with FSM_LO_TRACE. An ordinary build reports
+ * out unless the core is built with FSM_LIDAR_ODOMETRY_TRACE. An ordinary build reports
  * only where it cannot write a file or is handed a mode it does not know.
  *
  * Install before matching starts. Nothing guards a host that swaps the
@@ -211,6 +211,6 @@ private:
   unsigned int scans_seen_{0};
 };
 
-}  // namespace fsm_lo
+}  // namespace fsm_lidar_odometry
 
-#endif  // FSM_LO__FSM_LO_HPP_
+#endif  // FSM_LIDAR_ODOMETRY__FSM_LIDAR_ODOMETRY_HPP_

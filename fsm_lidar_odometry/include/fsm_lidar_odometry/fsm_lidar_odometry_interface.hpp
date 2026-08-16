@@ -17,8 +17,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-#ifndef FSM_LO__FSM_LO_INTERFACE_HPP_
-#define FSM_LO__FSM_LO_INTERFACE_HPP_
+#ifndef FSM_LIDAR_ODOMETRY__FSM_LIDAR_ODOMETRY_INTERFACE_HPP_
+#define FSM_LIDAR_ODOMETRY__FSM_LIDAR_ODOMETRY_INTERFACE_HPP_
 
 #include <chrono>
 #include <memory>
@@ -34,9 +34,9 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <tf2_ros/transform_broadcaster.hpp>
 
-#include "fsm_lo/fsm_lo.hpp"
+#include "fsm_lidar_odometry/fsm_lidar_odometry.hpp"
 
-namespace fsm_lo
+namespace fsm_lidar_odometry
 {
 
 /**
@@ -109,6 +109,6 @@ private:
   bool locked_{true};
 };
 
-}  // namespace fsm_lo
+}  // namespace fsm_lidar_odometry
 
-#endif  // FSM_LO__FSM_LO_INTERFACE_HPP_
+#endif  // FSM_LIDAR_ODOMETRY__FSM_LIDAR_ODOMETRY_INTERFACE_HPP_

@@ -1,12 +1,12 @@
 services:
-  fsmlo:
+  fsm_lidar_odometry:
 
     build:
       context: ..
       dockerfile: docker/Dockerfile
 
-    image: li9i/fsm-lo:latest
-    container_name: fsmlo
+    image: li9i/fsm-lidar-odometry:lyrical
+    container_name: fsm_lidar_odometry
     tty: true
     network_mode: "host"
     ipc: host

@@ -41,7 +41,7 @@
 #include <utility>
 #include <vector>
 
-#include "fsm_lo/fsm_lo.hpp"
+#include "fsm_lidar_odometry/fsm_lidar_odometry.hpp"
 
 namespace
 {

@@ -1,5 +1,5 @@
 #______________________________________________________________________________
-/fsm_lo:
+/fsm_lidar_odometry:
   ros__parameters:
 
     # --------------------------------------------------------------------------
@@ -12,9 +12,9 @@
     # trajectory starts at (0,0,0)
     initial_pose_topic: "/amcl_pose"
 
-    pose_estimate_topic: "fsm_lo/pose_estimate"
-    path_estimate_topic: "fsm_lo/path_estimate"
-    lo_topic:            "fsm_lo/lo"
+    pose_estimate_topic: "fsm_lidar_odometry/pose_estimate"
+    path_estimate_topic: "fsm_lidar_odometry/path_estimate"
+    lo_topic:            "fsm_lidar_odometry/lo"
 
     # --------------------------------------------------------------------------
     # Frames

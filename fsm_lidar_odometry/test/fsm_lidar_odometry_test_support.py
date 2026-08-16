@@ -93,20 +93,20 @@ class Harness(Node):
         qos = QoSProfile(depth=50)
         qos.reliability = ReliabilityPolicy.RELIABLE
 
-        self.create_subscription(Odometry, '/fsm_lo/lo',
+        self.create_subscription(Odometry, '/fsm_lidar_odometry/lo',
                                  self.odometry.append, qos)
-        self.create_subscription(PoseStamped, '/fsm_lo/pose_estimate',
+        self.create_subscription(PoseStamped, '/fsm_lidar_odometry/pose_estimate',
                                  self.poses.append, qos)
-        self.create_subscription(Path, '/fsm_lo/path_estimate',
+        self.create_subscription(Path, '/fsm_lidar_odometry/path_estimate',
                                  self.paths.append, qos)
         self.create_subscription(TFMessage, '/tf', self.transforms.append, qos)
 
         self.scan_publisher = self.create_publisher(LaserScan, '/base_scan', 1)
         self.initial_pose_publisher = self.create_publisher(
-            PoseWithCovarianceStamped, '/fsm_lo/initial_pose', 1)
+            PoseWithCovarianceStamped, '/fsm_lidar_odometry/initial_pose', 1)
 
         self.service_clients = {
-            name: self.create_client(Trigger, '/fsm_lo/' + name)
+            name: self.create_client(Trigger, '/fsm_lidar_odometry/' + name)
             for name in ('start', 'stop', 'clear_estimated_trajectory',
                          'set_initial_pose')
         }

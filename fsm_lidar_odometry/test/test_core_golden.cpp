@@ -97,7 +97,7 @@
 #include <string>
 #include <vector>
 
-#include "fsm_lo/fsm_lo.hpp"
+#include "fsm_lidar_odometry/fsm_lidar_odometry.hpp"
 
 namespace
 {
@@ -106,14 +106,14 @@ const double kTolerance = 1e-9;
 
 struct Reference
 {
-  std::vector<fsm_lo::Pose> increments;
-  std::vector<fsm_lo::Pose> accumulated;
+  std::vector<fsm_lidar_odometry::Pose> increments;
+  std::vector<fsm_lidar_odometry::Pose> accumulated;
   std::vector<unsigned int> recoveries;
 };
 
 std::string fixture(const std::string& name)
 {
-  return std::string(FSM_LO_TEST_FIXTURES) + "/" + name;
+  return std::string(FSM_LIDAR_ODOMETRY_TEST_FIXTURES) + "/" + name;
 }
 
 std::vector<std::vector<double>> readScans(const std::string& path)
@@ -152,8 +152,8 @@ Reference readReference(const std::string& path)
     std::istringstream values(line);
 
     unsigned int index = 0;
-    fsm_lo::Pose increment;
-    fsm_lo::Pose accumulated;
+    fsm_lidar_odometry::Pose increment;
+    fsm_lidar_odometry::Pose accumulated;
     unsigned int recoveries = 0;
 
     values >> index
@@ -178,19 +178,19 @@ void expectAgreement(const std::string& scenario)
   ASSERT_GE(scans.size(), 2u) << scenario;
   ASSERT_EQ(reference.increments.size(), scans.size() - 1) << scenario;
 
-  fsm_lo::Parameters parameters;
+  fsm_lidar_odometry::Parameters parameters;
   parameters.size_scan = scans[0].size();
 
-  fsm_lo::Matcher matcher(parameters);
+  fsm_lidar_odometry::Matcher matcher(parameters);
 
-  const std::expected<fsm_lo::MatchResult, fsm_lo::MatchError> first =
+  const std::expected<fsm_lidar_odometry::MatchResult, fsm_lidar_odometry::MatchError> first =
     matcher.process(scans[0]);
   ASSERT_FALSE(first.has_value()) << "the first scan must yield no match";
-  EXPECT_EQ(first.error(), fsm_lo::MatchError::no_reference_yet);
+  EXPECT_EQ(first.error(), fsm_lidar_odometry::MatchError::no_reference_yet);
 
   for (std::size_t s = 1; s < scans.size(); s++)
   {
-    const std::expected<fsm_lo::MatchResult, fsm_lo::MatchError> result =
+    const std::expected<fsm_lidar_odometry::MatchResult, fsm_lidar_odometry::MatchError> result =
       matcher.process(scans[s]);
 
     ASSERT_TRUE(result.has_value()) << scenario << " step " << s;
