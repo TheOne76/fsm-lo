@@ -23,7 +23,8 @@
   <depend>eigen</depend>
   <depend>cgal</depend>
   <depend>libfftw3</depend>
-  <depend>pkg-config</depend>
+  <buildtool_depend>pkg-config</buildtool_depend>
+  <buildtool_export_depend>pkg-config</buildtool_export_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
